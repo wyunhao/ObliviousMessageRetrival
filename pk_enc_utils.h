@@ -10,7 +10,7 @@ using namespace std;
 
 // Asymmetric version is basically ready to be pushed to TFHE library if we want.
 
-void genPkSingle(LweSample* result, double alpha, const LweKey* key){
+void genPkSingle(LweSample* result, const double& alpha, const LweKey* key){
     const int32_t n = key->params->n;
     result->b = 0;
     for (int32_t i = 0; i < n; ++i)
@@ -23,7 +23,7 @@ void genPkSingle(LweSample* result, double alpha, const LweKey* key){
     result->current_variance = alpha*alpha;
 }
 
-void genPK(LweSample* pk, double alpha, const LweKey* key, const TFheGateBootstrappingParameterSet *params, const int m = 500){
+void genPK(LweSample* pk, const double& alpha, const LweKey* key, const TFheGateBootstrappingParameterSet *params, const int m = 500){
     // We have a security parameter m
     const LweParams *in_out_params = params->in_out_params;
     pk = new_LweSample_array(m, in_out_params);
@@ -51,7 +51,7 @@ void allPossibleSubset(const int& m)
     }
 }
 
-void encryptAsymm(LweSample* result, const int msg, const LweSample* pk, const TFheGateBootstrappingParameterSet *params, const int subSetSize = 20, const int m = 500){
+void encryptAsymm(LweSample* result, const int& msg, const LweSample* pk, const TFheGateBootstrappingParameterSet *params, const int m = 500){
     int theN = params->in_out_params->n;
     int _theOnePlaintext = 536870912;
     int _theZeroPlaintext = -536870912;
