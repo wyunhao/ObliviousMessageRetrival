@@ -20,6 +20,6 @@ sudo cmake --install build
 ```
 
 # Notes:
-pk_enc_utils.h includes the in-progress test of packing, but will be held for now.
-Other files' functions are mostly finished and tested. Some may need modifications during integration test.
+pk_enc_utils.h includes the in-progress test of packing, but will be held for now. <br />
+Other files' functions are mostly finished and tested. Some may need modifications during integration test. <br />
 Next steps: finish equation solving and the multiplications in the middle steps.
