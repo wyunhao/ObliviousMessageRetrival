@@ -61,7 +61,7 @@ void encryptAsymm(LweSample* result, const int msg, const LweSample* pk, const T
             result->a[j] = 0;
     }
 
-    if(allPossibleSubsets.size() == 0)
+    if(allPossibleSubsets.size() != pow(2, m))
         allPossibleSubset(m);
 
     vector<int> subset = allPossibleSubsets[rand()%m];
