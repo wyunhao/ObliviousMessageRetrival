@@ -8,6 +8,8 @@
 #include <string>
 using namespace std;
 
+// Asymmetric version is basically ready to be pushed to TFHE library if we want.
+
 void genPkSingle(LweSample* result, double alpha, const LweKey* key){
     const int32_t n = key->params->n;
     result->b = 0;
@@ -21,12 +23,31 @@ void genPkSingle(LweSample* result, double alpha, const LweKey* key){
     result->current_variance = alpha*alpha;
 }
 
-void genPK(LweSample* result, double alpha, const LweKey* key, const TFheGateBootstrappingParameterSet *params, const int m = 500){
+void genPK(LweSample* pk, double alpha, const LweKey* key, const TFheGateBootstrappingParameterSet *params, const int m = 500){
     // We have a security parameter m
     const LweParams *in_out_params = params->in_out_params;
-    result = new_LweSample_array(m, in_out_params);
+    pk = new_LweSample_array(m, in_out_params);
     for(int i = 0; i < m; i++){
-        genPkSingle(result + i, alpha, key);
+        genPkSingle(pk + i, alpha, key);
+    }
+}
+
+vector<vector<int>> allPossibleSubsets;
+
+void allPossibleSubset(const int& m)
+{
+    vector<int> allNum(m);
+    for(int i = 0; i < m; i++){
+        allNum[i] = i;
+    }
+    int count = pow(2, m);
+    allPossibleSubsets.resize(count);
+    for (int i = 0; i < count; i++) {
+
+        for (int j = 0; j < m; j++) {
+            if ((i & (1 << j)) != 0)
+                allPossibleSubsets[i].push_back(j);
+        }
     }
 }
 
@@ -40,15 +61,14 @@ void encryptAsymm(LweSample* result, const int msg, const LweSample* pk, const T
             result->a[j] = 0;
     }
 
-    vector<int> subset;
+    if(allPossibleSubsets.size() == 0)
+        allPossibleSubset(m);
+
+    vector<int> subset = allPossibleSubsets[rand()%m];
+    int subSetSize = subset.size();
     result->b = msg ? _theOnePlaintext : -_theZeroPlaintext;
     for(int i = 0; i < subSetSize; i++){
-        int temp = rand()%m;
-        while(count(subset.begin(), subset.end(), temp) != 0){
-            temp = rand()%m;
-        }
-        subset.push_back(temp);
-        
+        int temp = subSetSize[i];
         for(int j = 0; j < theN; j++){
             result->a[j] += pk[temp].a[j];
         }
