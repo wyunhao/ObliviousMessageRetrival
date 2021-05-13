@@ -1,3 +1,5 @@
+#pragma once
+
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -11,12 +13,13 @@
 using namespace std;
 
 
-int n = pow(10,5);
-int k = pow(10,3)*5;
-int N = pow(2,7);
+int n = pow(10,7);
+int k = 1000;
+int N = pow(2,5);
 int c = 10;
-int m = k*8;
+int m = k*1;
 vector<int> pertinentCollection(n, 0);
+vector<int> GTpertinentCollection(n, 0);
 
 class EachTransaction {      
   public:             
@@ -46,7 +49,7 @@ class EachTransaction {
 
 class EachBucket {
     public:
-        vector<shared_ptr<EachTransaction>> transInBucket;
+        vector<EachTransaction> transInBucket;
         vector<int> allSlots; // how many weights/items are in a single slot
         vector<int> allSlotsWeights; // the sumed weights in the slots
         bool iscollided;
@@ -54,27 +57,26 @@ class EachBucket {
         vector<int> collidedSlots; // the list of all collieded slots
 
     EachBucket(){iscollided = false; allSlots = vector<int> (N, 0); \
-                    allSlotsWeights = vector<int> (N, 0); allTrans = vector<int> (n, 0);};
+                    allSlotsWeights = vector<int> (N, 0); allTrans = vector<int> (0, 0);};
     ~EachBucket(){};
-    void putTransInBucket(EachTransaction &t) {
-        shared_ptr<EachTransaction> p = make_shared<EachTransaction>(t);
-        transInBucket.push_back(p);
+    void putTransInBucket(EachTransaction t) {
+        transInBucket.push_back(t);
+        //if(rand() % 10000 == 0){
+        //cout << transInBucket[transInBucket.size() - 1].ithTransaction << " "\
+        //<< transInBucket[transInBucket.size() - 1].ithSlot << " "\
+        //<< transInBucket[transInBucket.size() - 1].ithBucket << " "\
+        //<< transInBucket[transInBucket.size() - 1].weight << " "\
+        //<< transInBucket[transInBucket.size() - 1].pertinent << " " << endl;
+        //cout << t.ithTransaction << " "\
+        //<< t.ithSlot << " "\
+        //<< t.ithBucket << " "\
+        //<< t.weight << " "\
+        //<< t.pertinent << " " << endl;
+        //}
+        
     };
     //~EachBucket() {for(int i = 0; i < transInBucket.size(); i++) {delete transInBucket[i];}};
 };
-
-class EachBucket2 {
-    public:
-        vector<shared_ptr<EachTransaction>> transInBucket;
-        vector<int> allSlots; // how many weights/items are in a single slot
-        vector<int> allSlotsWeights; // the sumed weights in the slots
-        bool iscollided;
-        vector<int> allTrans; // totally n transactions. Not used for now
-        vector<int> collidedSlots; // the list of all collieded slots
-
-    //~EachBucket() {for(int i = 0; i < transInBucket.size(); i++) {delete transInBucket[i];}};
-};
-
 
 ////////////////////////////// Initialization
 
@@ -90,8 +92,8 @@ void Initialization(vector<vector<EachTransaction>>& allvs, vector<int>& pertine
 
     //2. initialize all transactions
     vector<EachTransaction> v(n);
-    for(int i = 0; i < n; i++) {v[i] = EachTransaction(i, i%N);} // We permute
-    for(int i = 0; i < k; i++) {v[pertinentV[i]].setPertinent();}
+    generate(v.begin(), v.end(), [n = 0] () mutable { return EachTransaction(n++, rand()%N); });
+    for(int i = 0; i < k; i++) {v[pertinentV[i]].setPertinent(); GTpertinentCollection[pertinentV[i]] = 1;}
     for(int i = 0; i < c; i++) {allvs[i] = v;};
 
     //3. initialize all weights
@@ -140,10 +142,10 @@ void Initialization(vector<vector<EachTransaction>>& allvs, vector<int>& pertine
 double collisionSlotsRate(EachBucket& v){
     
     for(int i = 0; i < v.transInBucket.size(); i++){
-        if (v.transInBucket[i]->pertinent){
-            v.allSlots[v.transInBucket[i]->ithSlot] += 1;
-            v.allSlotsWeights[v.transInBucket[i]->ithSlot] += v.transInBucket[i]->weight;
-            v.allTrans[v.transInBucket[i]->ithTransaction] += 1;
+        if (v.transInBucket[i].pertinent){
+            v.allSlots[v.transInBucket[i].ithSlot] += 1;
+            v.allSlotsWeights[v.transInBucket[i].ithSlot] += v.transInBucket[i].weight;
+            //v.allTrans[v.transInBucket[i].ithTransaction] += 1;
         }
     }
     int ret = 0;
@@ -178,36 +180,53 @@ template <typename T>
 vector<T> possibleSums(const std::vector<T>& v, std::size_t count, vector<vector<size_t>>& retIndex)
 {
     int nCr = tgamma(int(v.size())+1)/tgamma(count+1)/tgamma(int(v.size()) - count+1);
-    vector<T> ret(nCr, 0);
-    retIndex.resize(nCr);
+    vector<T> ret;
 
-    if(!(count <= v.size())){
-        cout << count << " " << v.size() << endl;
-        exit(1);
-    }
-    std::vector<bool> bitset(count, 1);
-    bitset.resize(v.size(), 0);
-
-    int counter = 0;
+    size_t K = count;
+    size_t N = v.size();
+    std::string bitmask(K, 1); // K leading 1's
+    bitmask.resize(N, 0); // N-K trailing 0's
+ 
+    // print integers and permute bitmask
     do {
-        for (std::size_t i = 0; i != v.size(); ++i) {
-            if (bitset[i]) {
-                ret[counter] += v[i];
-                retIndex[counter].push_back(i);
-            }
+        T temp(0);
+        vector<size_t> tempvec;
+        for (size_t i = 0; i < N; ++i) // [0..N-1] integers
+        {
+            if (bitmask[i]) {temp += v[i]; tempvec.push_back(i);}
         }
-        counter += 1;
-    } while (std::prev_permutation(bitset.begin(), bitset.end()));
+        ret.push_back(temp);
+        retIndex.push_back(tempvec);
+    } while (std::prev_permutation(bitmask.begin(), bitmask.end()));
+//
+    //if(!(count <= v.size())){
+    //    cout << count << " " << v.size() << endl;
+    //    exit(1);
+    //}
+    //std::vector<bool> bitset(count, 1);
+    //bitset.resize(v.size(), 0);
+//
+    //int counter = 0;
+    //do {
+    //    for (std::size_t i = 0; i != v.size(); ++i) {
+    //        if (bitset[i]) {
+    //            ret[counter] += v[i];
+    //        }
+    //    }
+    //    counter += 1;
+    //} while (std::prev_permutation(bitset.begin(), bitset.end()));
 
     return ret;
 }
 
 int bigcount = 0;
 bool checkUnique(const std::vector<int>& possibleWeights, size_t num_of_collisions, int theCollidedResult){
-    vector<vector<size_t> retIndex;
+    vector<vector<size_t>> retIndex;
     auto res = possibleSums(possibleWeights, num_of_collisions, retIndex);
     int theCount = count(res.begin(), res.end(), theCollidedResult);
-
+    if(theCount <= 0)
+        cerr << "Something went wrong in check unique, please check!" << endl;
+    
     if(theCount == 1){
         for(int i = 0; i < retIndex.size(); i++){
             if(theCollidedResult == res[i]){
@@ -215,31 +234,29 @@ bool checkUnique(const std::vector<int>& possibleWeights, size_t num_of_collisio
                 for(int j = 0; j < theIndices.size(); j++){
                     int tempTheWeight = possibleWeights[theIndices[j]] - 1; // weight start from 1 while slots start from 0
                     tempTheWeight %= n;
-                    tempTheWeight %= N;
                     pertinentCollection[tempTheWeight] = 1;
                 }
             }
         }
     }
 
-    if(theCount <= 0)
-        cerr << "Something went wrong in check unique, please check!" << endl;
-
     // Just for test and debug purpose 
-    if((theCount < 1) && (bigcount <= 2)){
-        cout << "\n xxxxxxxxxxxxxxxxxx" << endl;
-        for(int i = 0; i < possibleWeights.size(); i++){
-            cout << possibleWeights[i] << " ";
-        }
-        cout << endl;
-        for(int i = 0; i < res.size(); i++){
-            cout << res[i] << " ";
-        }
-        cout << endl;
-        cout << theCollidedResult << endl;
-        cout << theCount;
-        bigcount += 1;
-    }
+    //if((theCount != 1) && (bigcount <= 2)){
+    //    cout << "\n xxxxxxxxxxxxxxxxxx" << endl;
+    //    for(int i = 0; i < possibleWeights.size(); i++){
+    //        cout << possibleWeights[i] << " ";
+    //    }
+    //    cout << endl;
+    //    for(int i = 0; i < res.size(); i++){
+    //        cout << res[i] << " ";
+    //    }
+    //    cout << endl;
+    //    cout << theCollidedResult << endl;
+    //    cout << theCount << endl;;
+    //    cout << num_of_collisions << endl;
+    //    bigcount += 1;
+    //    exit(1);
+    //}
     // Just for test and debug purpose 
 
     return (theCount == 1);
@@ -260,8 +277,8 @@ int selfResolving(vector<EachBucket>& allBuckets){
         {
             int theSlot = allBuckets[i].collidedSlots.back(); allBuckets[i].collidedSlots.pop_back(); // check the last slot get collided and pop it out from the original vector
             for(int j = 0; j < allBuckets[i].transInBucket.size(); j++){
-                if (allBuckets[i].transInBucket[j]->ithSlot == theSlot){
-                    possibleWeights.push_back(allBuckets[i].transInBucket[j]->weight);
+                if (allBuckets[i].transInBucket[j].ithSlot == theSlot){
+                    possibleWeights.push_back(allBuckets[i].transInBucket[j].weight);
                 }
             }
             if(!checkUnique(possibleWeights, allBuckets[i].allSlots[theSlot], allBuckets[i].allSlotsWeights[theSlot]))
@@ -274,6 +291,7 @@ int selfResolving(vector<EachBucket>& allBuckets){
                 allBuckets[i].allSlots[theSlot] = 1; // mark that slot as not collided though it might not matter
                 allBuckets[i].allSlotsWeights[theSlot] = 0; // mark that slot as not collided though it might not matter
             }
+            possibleWeights.clear();
         }
         
         if(isSelfResolvable)
@@ -296,13 +314,14 @@ int unitProporgation(vector<EachBucket>& allBuckets, vector<vector<EachTransacti
             vector<int> newCollidedList;
             while(allBuckets[i].collidedSlots.size() != 0) // check all the collided vectors
             {
+                // cout << allBuckets[i].collidedSlots.size() << endl;
                 int theSlot = allBuckets[i].collidedSlots.back(); allBuckets[i].collidedSlots.pop_back(); // check the last slot get collided and pop it out from the original vector
                 // check for all the transactions that match this slot
                 for(int j = 0; j < allBuckets[i].transInBucket.size(); j++){
                     int theithtrans;
-                    if ((allBuckets[i].transInBucket[j]->pertinent) && (allBuckets[i].transInBucket[j]->ithSlot == theSlot)){
+                    if ((allBuckets[i].transInBucket[j].pertinent) && (allBuckets[i].transInBucket[j].ithSlot == theSlot)){
                         bool solved = false;
-                        theithtrans = allBuckets[i].transInBucket[j]->ithTransaction;
+                        theithtrans = allBuckets[i].transInBucket[j].ithTransaction;
                         for(int j = 0; j < c; j++){
                             EachTransaction* ptr = & allvs[j][theithtrans];
                             if(!allBuckets[ptr->ithBucket].iscollided){
@@ -317,7 +336,7 @@ int unitProporgation(vector<EachBucket>& allBuckets, vector<vector<EachTransacti
                         //cout << allBuckets[i].allSlots[theSlot] << endl;
                         if(solved){
                             allBuckets[i].allSlots[theSlot] -= 1;
-                            allBuckets[i].allSlotsWeights[theSlot] -= allBuckets[i].transInBucket[j]->weight;
+                            allBuckets[i].allSlotsWeights[theSlot] -= allBuckets[i].transInBucket[j].weight;
                             if(allBuckets[i].allSlots[theSlot] = 1)
                             {
                                 break;
@@ -342,27 +361,47 @@ int unitProporgation(vector<EachBucket>& allBuckets, vector<vector<EachTransacti
     return collidedCount;
 }
 
-void fillOutpertinentCollection()
-
-int main(){
-    vector<vector<EachTransaction>> TransactionsAllCopies(c);
-    vector<int> pertinentTrans(k);
-    vector<EachBucket> allBuckets(m/5);
-    chrono::high_resolution_clock::time_point time_start, time_end;
-    chrono::microseconds time_diff;
-while(1){
-        
+int fillOutpertinentCollection(vector<EachBucket>& allBuckets, vector<vector<EachTransaction>>& TransactionsAllCopies){
+    for(int i = 0; i < m; i++){
+        for(int j = 0; j < N; j++){
+            if(allBuckets[i].allSlots[j] == 1){
+                auto theWeight = allBuckets[i].allSlotsWeights[j] - 1;
+                theWeight %= n;
+                pertinentCollection[theWeight] = 1;
+            }
+        }
     }
-    //time_start = chrono::high_resolution_clock::now();
-    //Initialization(TransactionsAllCopies, pertinentTrans, allBuckets);
-    //time_end = chrono::high_resolution_clock::now();
-    //time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
- //
-    //EachBucket tst; tst.transInBucket = TransactionsAllCopies[0];
-//
-    //
-    //cout << "Collision Rate: " << collisionSlotsRate(tst) << endl;
-    //cout << "Direction 2: how many buckets collided: " << direction2(allBuckets)[0] << endl;
-    ////cout << "Direction 3: how many buckets collided: " << selfResolving(allBuckets) << endl;
-    //cout << "Done [" << time_diff.count() << " microseconds]" << endl;
+    //int pert_counter = 0;
+    //for(int i = 0; i < n; i++)
+    //    if(GTpertinentCollection[i] || pertinentCollection[i])
+    //        cout << i << " " << GTpertinentCollection[i] << " " << pertinentCollection[i] << endl;
+    //cout << pert_counter << endl;
+    unitProporgation(allBuckets, TransactionsAllCopies);
+    return selfResolving(allBuckets);
 }
+
+//int main(){
+//    vector<vector<EachTransaction>> TransactionsAllCopies(c);
+//    vector<int> pertinentTrans(k);
+//    vector<EachBucket> allBuckets(m);
+//    chrono::high_resolution_clock::time_point time_start, time_end;
+//    chrono::microseconds time_diff;//
+
+//    time_start = chrono::high_resolution_clock::now();
+//    Initialization(TransactionsAllCopies, pertinentTrans, allBuckets);
+//    time_end = chrono::high_resolution_clock::now();
+//    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+// 
+//    EachBucket tst; tst.transInBucket = TransactionsAllCopies[0];
+//    cout << "Collision Rate: " << collisionSlotsRate(tst) << endl;
+//    cout << "Direction 2: how many buckets collided: " << direction2(allBuckets)[0] << endl;
+//    cout << "Direction 3: how many buckets collided: " << fillOutpertinentCollection(allBuckets, TransactionsAllCopies) << endl;
+//    int pert_counter = 0;
+//    for(int i = 0; i < n; i++)
+//        if(pertinentCollection[i]){
+//            pert_counter += 1;
+//        }
+//    cout << pert_counter << endl;
+//    //cout << "Direction 3: how many buckets collided: " << selfResolving(allBuckets) << endl;
+//    cout << "Done [" << time_diff.count() << " microseconds]" << endl;
+//}
