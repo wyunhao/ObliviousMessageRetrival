@@ -18,3 +18,8 @@ cmake -S . -B build
 cmake --build build
 sudo cmake --install build
 ```
+
+# Notes:
+pk_enc_utils.h includes the in-progress test of packing, but will be held for now.
+Other files' functions are mostly finished and tested. Some may need modifications during integration test.
+Next steps: finish equation solving and the multiplications in the middle steps.
