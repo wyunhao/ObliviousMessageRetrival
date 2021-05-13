@@ -23,35 +23,19 @@ void genPkSingle(LweSample* result, const double& alpha, const LweKey* key){
     result->current_variance = alpha*alpha;
 }
 
-void genPK(LweSample* pk, const double& alpha, const LweKey* key, const TFheGateBootstrappingParameterSet *params, const int m = 500){
+void genPK(LweSample*& pk, const LweKey* sk, const TFheGateBootstrappingParameterSet *params, const int m = 5000){
     // We have a security parameter m
+    double alpha = params->in_out_params->alpha_min;
     const LweParams *in_out_params = params->in_out_params;
     pk = new_LweSample_array(m, in_out_params);
     for(int i = 0; i < m; i++){
-        genPkSingle(pk + i, alpha, key);
+        genPkSingle(pk + i, alpha, sk);
     }
 }
 
-vector<vector<int>> allPossibleSubsets;
-
-void allPossibleSubset(const int& m)
-{
-    vector<int> allNum(m);
-    for(int i = 0; i < m; i++){
-        allNum[i] = i;
-    }
-    int count = pow(2, m);
-    allPossibleSubsets.resize(count);
-    for (int i = 0; i < count; i++) {
-
-        for (int j = 0; j < m; j++) {
-            if ((i & (1 << j)) != 0)
-                allPossibleSubsets[i].push_back(j);
-        }
-    }
-}
-
-void encryptAsymm(LweSample* result, const int& msg, const LweSample* pk, const TFheGateBootstrappingParameterSet *params, const int m = 500){
+void encryptAsymm(LweSample*& result, const int& msg, const LweSample* pk, const TFheGateBootstrappingParameterSet *params, const int m = 5000, const double prob = 0.5){
+    // If we have pk with size m, each pk element has 1/2 chance to be used
+    // This is because each element either in or not in a subset creating two probabilities
     int theN = params->in_out_params->n;
     int _theOnePlaintext = 536870912;
     int _theZeroPlaintext = -536870912;
@@ -61,19 +45,55 @@ void encryptAsymm(LweSample* result, const int& msg, const LweSample* pk, const 
             result->a[j] = 0;
     }
 
-    if(allPossibleSubsets.size() != pow(2, m))
-        allPossibleSubset(m);
-
-    vector<int> subset = allPossibleSubsets[rand()%m];
-    int subSetSize = subset.size();
-    result->b = msg ? _theOnePlaintext : -_theZeroPlaintext;
-    for(int i = 0; i < subSetSize; i++){
-        int temp = subSetSize[i];
+    result->b = msg ? _theOnePlaintext : _theZeroPlaintext;
+    for(int i = 0; i < m; i++){
+        if(((double)rand()/(double)RAND_MAX) < prob){
+            continue;
+        }
+        int temp = i;
         for(int j = 0; j < theN; j++){
             result->a[j] += pk[temp].a[j];
         }
         result->b += pk[temp].b;
     }
+}
+
+void testPKEnc(){
+    uint32_t seed = time(NULL);
+    srand(seed);
+    tfhe_random_generator_setSeed(&seed, 1);
+
+    int32_t minimum_lambda = 128;
+    int logQ = 32; // we are using mod32 for torus
+    int m = minimum_lambda*logQ*1.1 + 1; // pk num
+
+    TFheGateBootstrappingParameterSet *params = new_default_gate_bootstrapping_parameters(minimum_lambda);
+    TFheGateBootstrappingSecretKeySet *keyset = new_random_gate_bootstrapping_secret_keyset(params);
+    LweSample* pk;
+    genPK(pk, keyset->lwe_key, params, m);
+
+    int num_of_tests = 100;
+    int counter = 0;
+    for(int i = 0; i < num_of_tests; i++){
+        LweSample* ciphertext;
+        int res = rand()%2;
+        encryptAsymm(ciphertext, res, pk, params, m);
+        bootsAND(ciphertext, ciphertext, ciphertext, &keyset->cloud);
+        bool mess1 = bootsSymDecrypt(ciphertext, keyset);
+        if(mess1 != (bool)res){
+            counter++;
+        }
+
+        delete_LweSample_array(1, ciphertext);
+    }
+    if(!counter)
+        cout << "Pass unit test!" << endl;
+    else
+        cout << "Error " << counter << " times out of " << num_of_tests << " tests" << endl;
+
+    delete_LweSample_array(m, pk);
+    delete_gate_bootstrapping_secret_keyset(keyset);
+    delete_gate_bootstrapping_parameters(params);
 }
 
 // This main function includes all things that are in progress so very messy.
