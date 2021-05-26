@@ -1,6 +1,6 @@
 # ObliviousMessageRetrival
 
-# Dependency: Palisade
+### Dependency: Palisade
 
 ```
 git clone https://github.com/tfhe/tfhe
@@ -12,7 +12,7 @@ make
 make install
 ```
 
-# Notes:
+### Notes:
 It's now completely remade, but some functions in the old/ folder can be useful.
 To compile:
 ```
