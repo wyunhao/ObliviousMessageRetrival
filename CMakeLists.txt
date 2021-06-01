@@ -21,6 +21,7 @@ set(CMAKE_CXX_STANDARD 11)
 option( BUILD_STATIC "Set to ON to include static versions of the library" OFF)
 
 find_package(Palisade)
+find_package(SEAL 3.6 REQUIRED)
 
 set( CMAKE_CXX_FLAGS ${PALISADE_CXX_FLAGS} )
 
@@ -43,6 +44,7 @@ endif()
 
 ### ADD YOUR EXECUTABLE(s) HERE
 add_executable( regev main.cpp )
+target_link_libraries(regev SEAL::seal)
 ###
 ### EXAMPLE:
 ### add_executable( test demo-simple-example.cpp )
