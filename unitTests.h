@@ -2,6 +2,7 @@
 
 #include "regevToBFVSeal.h"
 #include "examples_fromseal.h"
+#include "retrieval.h"
 
 void testMultMany1(){
     chrono::high_resolution_clock::time_point time_start, time_end;
@@ -403,4 +404,332 @@ void testcomputeBplusAS3(){
         cout << pod_result[i] << " ";
     }
     cout << endl;
+}
+
+void testSIC4(){
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    chrono::microseconds time_diff;
+    EncryptionParameters parms(scheme_type::bfv);
+    size_t poly_modulus_degree = 32768;
+    parms.set_poly_modulus_degree(poly_modulus_degree);
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 35, \
+                                                                             30, 30, 35 }));
+
+    parms.set_plain_modulus(65537);
+
+    SEALContext context(parms, true, sec_level_type::none);
+    print_parameters(context);
+    cout << endl;
+    auto qualifiers = context.first_context_data()->qualifiers();
+    cout << "Batching enabled: " << boolalpha << qualifiers.using_batching << endl;
+
+    KeyGenerator keygen(context);
+    SecretKey secret_key = keygen.secret_key();
+    PublicKey public_key;
+    keygen.create_public_key(public_key);
+    RelinKeys relin_keys;
+    keygen.create_relin_keys(relin_keys);
+    Encryptor encryptor(context, public_key);
+    Evaluator evaluator(context);
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+    GaloisKeys galois_keys;
+    keygen.create_galois_keys(galois_keys);
+
+    size_t slot_count = batch_encoder.slot_count();
+    size_t row_size = slot_count / 2;
+    cout << "Plaintext matrix row size: " << row_size << endl;
+
+    vector<uint64_t> pod_matrix(slot_count, 0ULL);
+    for(size_t i = 0; i < slot_count; i++){
+        pod_matrix[i] = i;
+    }
+    cout << "Input plaintext matrix:" << endl;
+    print_matrix(pod_matrix, row_size);
+
+    /*
+    First we use BatchEncoder to encode the matrix into a plaintext polynomial.
+    */
+    Plaintext plain_matrix;
+    print_line(__LINE__);
+    cout << "Encode plaintext matrix:" << endl;
+    batch_encoder.encode(pod_matrix, plain_matrix);
+    Ciphertext encrypted_matrix;
+    encryptor.encrypt(plain_matrix, encrypted_matrix);
+
+    vector<Ciphertext> tst;
+
+    time_start = chrono::high_resolution_clock::now();
+    expandSIC(tst, encrypted_matrix, galois_keys, slot_count, context, 7);
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << "Done [" << time_diff.count() << " microseconds]" << endl;
+    cout << "    + Noise budget in result: " << decryptor.invariant_noise_budget(tst[0]) << " bits" << endl;
+
+    Plaintext plain_result;
+    for(int i = 0; i < 7; i++){
+        decryptor.decrypt(tst[i], plain_result);
+        batch_encoder.decode(plain_result, pod_matrix);
+        print_matrix(pod_matrix, row_size);
+    }
+}
+
+void testdeterministIndexRetrieval5(){
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    chrono::microseconds time_diff;
+    EncryptionParameters parms(scheme_type::bfv);
+    size_t poly_modulus_degree = 32768;
+    parms.set_poly_modulus_degree(poly_modulus_degree);
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 35, \
+                                                                             30, 30, 35 }));
+
+    parms.set_plain_modulus(65537);
+
+    SEALContext context(parms, true, sec_level_type::none);
+    print_parameters(context);
+    cout << endl;
+    auto qualifiers = context.first_context_data()->qualifiers();
+    cout << "Batching enabled: " << boolalpha << qualifiers.using_batching << endl;
+
+    KeyGenerator keygen(context);
+    SecretKey secret_key = keygen.secret_key();
+    PublicKey public_key;
+    keygen.create_public_key(public_key);
+    RelinKeys relin_keys;
+    keygen.create_relin_keys(relin_keys);
+    Encryptor encryptor(context, public_key);
+    Evaluator evaluator(context);
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+    GaloisKeys galois_keys;
+    keygen.create_galois_keys(galois_keys);
+
+    size_t slot_count = batch_encoder.slot_count();
+    size_t row_size = slot_count / 2;
+    cout << "Plaintext matrix row size: " << row_size << endl;
+
+    vector<uint64_t> pod_matrix(slot_count, 0ULL);
+    for(size_t i = 0; i < slot_count; i++){
+        pod_matrix[i] = 1;
+    }
+    cout << "Input plaintext matrix:" << endl;
+    print_matrix(pod_matrix, row_size);
+
+    /*
+    First we use BatchEncoder to encode the matrix into a plaintext polynomial.
+    */
+    Plaintext plain_matrix, plain_matrix2;
+    print_line(__LINE__);
+    cout << "Encode plaintext matrix:" << endl;
+    batch_encoder.encode(pod_matrix, plain_matrix);
+    vector<uint64_t> pod_matrix2(slot_count, 0ULL);
+    batch_encoder.encode(pod_matrix2, plain_matrix2);
+    vector<Ciphertext> SIC(2000);
+    for(int i = 0; i < 2000; i++){
+        encryptor.encrypt(plain_matrix, SIC[i]);
+        if(i % 5 == 0)
+            encryptor.encrypt(plain_matrix2, SIC[i]);
+    }
+
+    Ciphertext output;
+
+    time_start = chrono::high_resolution_clock::now();
+    size_t counter = 0;
+    deterministicIndexRetrieval(output, SIC, context, slot_count, counter);
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << "Done [" << time_diff.count() << " microseconds]" << endl;
+    cout << "    + Noise budget in result: " << decryptor.invariant_noise_budget(output) << " bits" << endl;
+    cout << "    + Noise budget in result: " << decryptor.invariant_noise_budget(SIC[0]) << " bits" << endl;
+
+    Plaintext plain_result;
+    decryptor.decrypt(output, plain_result);
+    batch_encoder.decode(plain_result, pod_matrix);
+    print_matrix(pod_matrix, row_size);
+}
+
+void testrandomizedIndexRetrieval6(){
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    chrono::microseconds time_diff;
+    EncryptionParameters parms(scheme_type::bfv);
+    size_t poly_modulus_degree = 32768;
+    parms.set_poly_modulus_degree(poly_modulus_degree);
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 35, \
+                                                                             30, 30, 35 }));
+
+    parms.set_plain_modulus(65537);
+
+    SEALContext context(parms, true, sec_level_type::none);
+    print_parameters(context);
+    cout << endl;
+    auto qualifiers = context.first_context_data()->qualifiers();
+    cout << "Batching enabled: " << boolalpha << qualifiers.using_batching << endl;
+
+    KeyGenerator keygen(context);
+    SecretKey secret_key = keygen.secret_key();
+    PublicKey public_key;
+    keygen.create_public_key(public_key);
+    RelinKeys relin_keys;
+    keygen.create_relin_keys(relin_keys);
+    Encryptor encryptor(context, public_key);
+    Evaluator evaluator(context);
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+    GaloisKeys galois_keys;
+    keygen.create_galois_keys(galois_keys);
+
+    size_t slot_count = batch_encoder.slot_count();
+    size_t row_size = slot_count / 2;
+    cout << "Plaintext matrix row size: " << row_size << endl;
+
+    vector<uint64_t> pod_matrix(slot_count, 0ULL);
+    for(size_t i = 0; i < slot_count; i++){
+        pod_matrix[i] = 1;
+    }
+    cout << "Input plaintext matrix:" << endl;
+    print_matrix(pod_matrix, row_size);
+
+    /*
+    First we use BatchEncoder to encode the matrix into a plaintext polynomial.
+    */
+    Plaintext plain_matrix, plain_matrix2;
+    print_line(__LINE__);
+    cout << "Encode plaintext matrix:" << endl;
+    batch_encoder.encode(pod_matrix, plain_matrix);
+    vector<uint64_t> pod_matrix2(slot_count, 0ULL);
+    batch_encoder.encode(pod_matrix2, plain_matrix2);
+    vector<Ciphertext> SIC(100);
+    for(int i = 0; i < 100; i++){
+        encryptor.encrypt(plain_matrix, SIC[i]);
+        if(i % 5 == 0)
+            encryptor.encrypt(plain_matrix2, SIC[i]);
+    }
+
+    Ciphertext output;
+
+    time_start = chrono::high_resolution_clock::now();
+    size_t counter = 0;
+    int seed = 1;
+    randomizedIndexRetrieval(output, SIC, context, slot_count, counter, seed);
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << "Done [" << time_diff.count() << " microseconds]" << endl;
+    cout << "    + Noise budget in result: " << decryptor.invariant_noise_budget(output) << " bits" << endl;
+    cout << "    + Noise budget in result: " << decryptor.invariant_noise_budget(SIC[0]) << " bits" << endl;
+
+    Plaintext plain_result;
+    decryptor.decrypt(output, plain_result);
+    batch_encoder.decode(plain_result, pod_matrix);
+    print_matrix(pod_matrix, row_size);
+    for(int i = 0; i < 65536/2; i++){
+        if (pod_matrix[i] != 0){
+            cout << pod_matrix[i] << " ";
+        }
+    }
+    cout << endl;
+}
+
+void testPayloadRetrieval(){
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    chrono::microseconds time_diff;
+    EncryptionParameters parms(scheme_type::bfv);
+    size_t poly_modulus_degree = 32768;
+    parms.set_poly_modulus_degree(poly_modulus_degree);
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 35, \
+                                                                             30, 30, 35 }));
+
+    parms.set_plain_modulus(65537);
+
+    SEALContext context(parms, true, sec_level_type::none);
+    print_parameters(context);
+    cout << endl;
+    auto qualifiers = context.first_context_data()->qualifiers();
+    cout << "Batching enabled: " << boolalpha << qualifiers.using_batching << endl;
+
+    KeyGenerator keygen(context);
+    SecretKey secret_key = keygen.secret_key();
+    PublicKey public_key;
+    keygen.create_public_key(public_key);
+    RelinKeys relin_keys;
+    keygen.create_relin_keys(relin_keys);
+    Encryptor encryptor(context, public_key);
+    Evaluator evaluator(context);
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+    GaloisKeys galois_keys;
+    keygen.create_galois_keys(galois_keys);
+
+    size_t slot_count = batch_encoder.slot_count();
+    size_t row_size = slot_count / 2;
+    cout << "Plaintext matrix row size: " << row_size << endl;
+
+    vector<uint64_t> pod_matrix(slot_count, 0ULL);
+    for(size_t i = 0; i < slot_count; i++){
+        pod_matrix[i] = 1;
+    }
+    cout << "Input plaintext matrix:" << endl;
+    print_matrix(pod_matrix, row_size);
+
+    /*
+    First we use BatchEncoder to encode the matrix into a plaintext polynomial.
+    */
+    Plaintext plain_matrix, plain_matrix2;
+    print_line(__LINE__);
+    cout << "Encode plaintext matrix:" << endl;
+    batch_encoder.encode(pod_matrix, plain_matrix);
+    vector<uint64_t> pod_matrix2(slot_count, 0ULL);
+    batch_encoder.encode(pod_matrix2, plain_matrix2);
+    int testsize = 10;
+    vector<Ciphertext> SIC(testsize);
+    for(int i = 0; i < testsize; i++){
+        encryptor.encrypt(plain_matrix, SIC[i]);
+        //if(i % 5 == 0)
+        //    encryptor.encrypt(plain_matrix2, SIC[i]);
+    }
+
+    vector<vector<uint64_t>> payloads(testsize);
+    for(int i = 0; i < testsize; i++){
+        payloads[i].resize(slot_count, 0);
+        for(int j = 0; j < 290; j++){
+            payloads[i][j] = i+1;
+        }
+    }
+
+    vector<Ciphertext> results(testsize);
+    Ciphertext output;
+
+    time_start = chrono::high_resolution_clock::now();
+    int seed = 3;
+    payloadRetrieval(results, payloads, SIC, context);
+    vector<vector<int>> bipartite_map;
+    bipartiteGraphGeneration(bipartite_map,testsize,64,3,seed);
+    //for(int i = 0; i < testsize; i++){
+    //    for(int j = 0; j < 10; j++){
+    //        cout << bipartite_map[i][j] << endl;
+    //    }
+    //}
+    payloadPacking(output, results, bipartite_map, slot_count, context, galois_keys);
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << "Done [" << time_diff.count() << " microseconds]" << endl;
+    cout << "    + Noise budget in result: " << decryptor.invariant_noise_budget(output) << " bits" << endl;
+    cout << "    + Noise budget in result: " << decryptor.invariant_noise_budget(SIC[0]) << " bits" << endl;
+
+    Plaintext plain_result;
+    decryptor.decrypt(output, plain_result);
+    batch_encoder.decode(plain_result, pod_matrix);
+    print_matrix(pod_matrix, row_size);
+    //int counter = 0;
+    //for(int i = 0; i < 65536/2; i++){
+    //    if (pod_matrix[i] != 0){
+    //        cout << pod_matrix[i] << " ";
+    //        counter++;
+    //    }
+    //}
+    ////for(int i = 0; i < 3; i++){
+    ////    for(int j = 0; j < 2; j++){
+    ////        cout << bipartite_map[i][j] << endl;
+    ////    }
+    ////}
+    //cout << endl << counter << endl;
 }

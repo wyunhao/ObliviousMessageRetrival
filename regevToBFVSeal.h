@@ -4,7 +4,9 @@
 #include "seal/seal.h"
 using namespace seal;
 
-void EvalMultMany_inpace(vector<Ciphertext>& ciphertexts, const RelinKeys &relin_keys, const SEALContext& context){
+// takes a vector of ciphertexts, and mult them all together result in the first element of the vector
+// depth optimal
+void EvalMultMany_inpace(vector<Ciphertext>& ciphertexts, const RelinKeys &relin_keys, const SEALContext& context){ // TODOmulti: can be multithreaded easily
     Evaluator evaluator(context);
 
     while(ciphertexts.size() != 1){
@@ -17,7 +19,7 @@ void EvalMultMany_inpace(vector<Ciphertext>& ciphertexts, const RelinKeys &relin
         }
         if(ciphertexts.size()%2 == 0)
             ciphertexts.resize(ciphertexts.size()/2);
-        else{
+        else{ // if odd, take the last one and mod down to make them compatible
             ciphertexts[ciphertexts.size()/2] = ciphertexts[ciphertexts.size()-1];
             evaluator.mod_switch_to_next_inplace(ciphertexts[ciphertexts.size()/2]);
             ciphertexts.resize(ciphertexts.size()/2+1);
@@ -25,6 +27,8 @@ void EvalMultMany_inpace(vector<Ciphertext>& ciphertexts, const RelinKeys &relin
     }
 }
 
+// Takes a ciphertexts
+// return c^65536, depth optimal
 void booleanization(Ciphertext& ciphertext, const RelinKeys &relin_keys, const SEALContext& context, const int& modulus_p = 65537){
     if(modulus_p == 65537){
         Evaluator evaluator(context);
@@ -39,8 +43,9 @@ void booleanization(Ciphertext& ciphertext, const RelinKeys &relin_keys, const S
     }
 }
 
+// take regev sk's and output switching key, which is a ciphertext of size n, where n is the regev ciphertext dimension
 void genSwitchingKey(vector<Ciphertext>& switchingKey, const SEALContext& context, const size_t& degree,\
-                         const PublicKey& BFVpk, const regevSK& regSk, const regevParam& params){
+                         const PublicKey& BFVpk, const regevSK& regSk, const regevParam& params){ // TODOmulti: can be multithreaded easily
     BatchEncoder batch_encoder(context);
     Encryptor encryptor(context, BFVpk);
     switchingKey.resize(params.n);
@@ -52,9 +57,10 @@ void genSwitchingKey(vector<Ciphertext>& switchingKey, const SEALContext& contex
     }
 }
 
+// compute b - as
 void computeBplusAS(Ciphertext& output, \
         const vector<regevCiphertext>& toPack, const vector<Ciphertext>& switchingKey,\
-        const SEALContext& context, const regevParam& param){
+        const SEALContext& context, const regevParam& param){ // TODOmulti: can be multithreaded, not that easily, but doable
 
 
     Evaluator evaluator(context);
@@ -71,13 +77,13 @@ void computeBplusAS(Ciphertext& output, \
         }
         vector<uint64_t> vectorOfInts(toPack.size());
         for(size_t j = 0; j < toPack.size(); j++){
-            vectorOfInts[j] = uint64_t((toPack[j].a[i].ConvertToInt()));
+            vectorOfInts[j] = uint64_t((toPack[j].a[i].ConvertToInt())); // store at most degree amount of a[i]'s
         }
         Plaintext plaintext;
         batch_encoder.encode(vectorOfInts, plaintext);
 
         if(i == 0){
-            evaluator.multiply_plain(switchingKey[i], plaintext, output);
+            evaluator.multiply_plain(switchingKey[i], plaintext, output); // times s[i]
         }
         else{
             Ciphertext temp;
@@ -88,7 +94,7 @@ void computeBplusAS(Ciphertext& output, \
 
     vector<uint64_t> vectorOfInts(toPack.size());
     for(size_t j = 0; j < toPack.size(); j++){
-        vectorOfInts[j] = uint64_t((toPack[j].b.ConvertToInt() - 16384) % 65537);
+        vectorOfInts[j] = uint64_t((toPack[j].b.ConvertToInt() - 16384) % 65537); // b - sum(s[i]a[i])
     }
     Plaintext plaintext;
     batch_encoder.encode(vectorOfInts, plaintext);
@@ -96,19 +102,21 @@ void computeBplusAS(Ciphertext& output, \
     evaluator.add_plain_inplace(output, plaintext);
 }
 
+// check in range
+// if within [-range, range -1], returns 0, and returns random number in p o/w
 void evalRangeCheck(Ciphertext& output, const int& range, const RelinKeys &relin_keys,\
                         const size_t& degree, const SEALContext& context, const regevParam& param){
     Evaluator evaluator(context);
     BatchEncoder batch_encoder(context);
     vector<Ciphertext> ciphertexts(2*range);
     for(int i = 0; i < range; i++){
-        vector<uint64_t> vectorOfInts(degree, i+1);
+        vector<uint64_t> vectorOfInts(degree, i+1); // check for up to -range
         Plaintext plaintext;
         batch_encoder.encode(vectorOfInts, plaintext);
         evaluator.add_plain(output, plaintext, ciphertexts[i]);
     }
     for(int i = 0; i < range; i++){
-        vector<uint64_t> vectorOfInts(degree, 65537 - i);
+        vector<uint64_t> vectorOfInts(degree, 65537 - i); // check for up to range - 1, because we include 0 in this 
         Plaintext plaintext;
         batch_encoder.encode(vectorOfInts, plaintext);
         evaluator.add_plain(output, plaintext, ciphertexts[range+i]);
@@ -118,4 +126,49 @@ void evalRangeCheck(Ciphertext& output, const int& range, const RelinKeys &relin
     output = ciphertexts[0];
     
     booleanization(output, relin_keys, context);
+}
+
+// innersum up to toCover amount, O(log(toCover)) time
+void innerSum_inplace(Ciphertext& output, const GaloisKeys& gal_keys, const size_t& degree,
+                const size_t& toCover, const SEALContext& context){
+    Evaluator evaluator(context);
+    for(size_t i = 1; i < toCover; i*=2){
+        Ciphertext temp;
+        if(i == degree/2)
+        {
+            evaluator.rotate_columns(output, gal_keys, temp);
+            evaluator.add_inplace(output, temp);
+        }
+        else
+        {
+            evaluator.rotate_rows(output, degree/2 - i, gal_keys, temp);
+            evaluator.add_inplace(output, temp);
+        }
+    }
+}
+
+// Takes one SIC compressed and expand then into SIC's each encrypt 0/1 in slots up to cover 580 bytes
+void expandSIC(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisKeys& gal_keys,
+                const size_t& degree, const SEALContext& context, const size_t& toExpandNum){ 
+    BatchEncoder batch_encoder(context);
+    Evaluator evaluator(context);
+    expanded.resize(toExpandNum);
+
+    vector<uint64_t> pod_matrix(degree, 0ULL); // TODOmulti: move inside to do multi-threading.
+    pod_matrix[0] = 1ULL;
+    Plaintext plain_matrix;
+    batch_encoder.encode(pod_matrix, plain_matrix);
+    for(size_t i = 0; i < toExpandNum; i++){ // TODOmulti: change to do multi-threading.
+        if(i != 0){ // if not 0, need to rotate to place 0
+            if(i == degree/2){
+                evaluator.rotate_columns_inplace(toExpand, gal_keys);
+            }
+            else{
+                evaluator.rotate_rows_inplace(toExpand, 1, gal_keys);
+            }
+        }
+        evaluator.multiply_plain(toExpand, plain_matrix, expanded[i]);
+        innerSum_inplace(expanded[i], gal_keys, degree, 32768, context); // This is to make future work less, and slowing by less than double for now.
+        //innerSum_inplace(expanded[i], gal_keys, degree, 290, context); // 580 bytes, and each slot 2 bytes, so totally 290 slots. Can get up to 1KB
+    }
 }
