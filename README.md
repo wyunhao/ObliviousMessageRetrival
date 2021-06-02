@@ -1,6 +1,6 @@
 # ObliviousMessageRetrival
 
-### Dependency: Palisade
+### Dependency: Palisade, SEAL
 
 ```
 git clone https://github.com/tfhe/tfhe
@@ -10,6 +10,14 @@ cd build
 cmake ../src -DENABLE_TESTS=on -DENABLE_FFTW=on -DCMAKE_BUILD_TYPE=debug
 make
 make install
+```
+
+```
+git clone https://github.com/microsoft/SEAL
+cd SEAL
+cmake -S . -B build
+cmake --build build
+sudo cmake --install build
 ```
 
 ### Notes:
