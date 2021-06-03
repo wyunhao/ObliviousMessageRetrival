@@ -11,8 +11,8 @@ void EvalMultMany_inpace(vector<Ciphertext>& ciphertexts, const RelinKeys &relin
 
     while(ciphertexts.size() != 1){
         for(size_t i = 0; i < ciphertexts.size()/2; i++){
-            if(i % 100 == 0)
-                cout << "hello " << i << endl;
+            //if(i % 100 == 0)
+            //    cout << "hello " << i << endl;
             evaluator.multiply_inplace(ciphertexts[i], ciphertexts[ciphertexts.size()/2+i]);
             evaluator.relinearize_inplace(ciphertexts[i], relin_keys);
             evaluator.mod_switch_to_next_inplace(ciphertexts[i]);
@@ -72,9 +72,9 @@ void computeBplusAS(Ciphertext& output, \
     }
         
     for(int i = 0; i < param.n; i++){
-        if (i % 100 == 0){
-            cout << "computeBplusAS: " << i << endl;
-        }
+        //if (i % 100 == 0){
+        //    cout << "computeBplusAS: " << i << endl;
+        //}
         vector<uint64_t> vectorOfInts(toPack.size());
         for(size_t j = 0; j < toPack.size(); j++){
             vectorOfInts[j] = uint64_t((toPack[j].a[i].ConvertToInt())); // store at most degree amount of a[i]'s
@@ -121,7 +121,7 @@ void evalRangeCheck(Ciphertext& output, const int& range, const RelinKeys &relin
         batch_encoder.encode(vectorOfInts, plaintext);
         evaluator.add_plain(output, plaintext, ciphertexts[range+i]);
     }
-    cout << "range compute finished" << endl;
+    //cout << "range compute finished" << endl;
     EvalMultMany_inpace(ciphertexts, relin_keys, context);
     output = ciphertexts[0];
     

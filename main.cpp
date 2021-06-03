@@ -4,7 +4,7 @@
 using namespace seal;
 
 int main(){
-testPayloadRetrieval();
+testEquationSolving();
     //regevTest();
     //bfvRangeCheckTest();
     //bfvFromRegevTest();

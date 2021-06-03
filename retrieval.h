@@ -92,7 +92,7 @@ void bipartiteGraphGeneration(vector<vector<int>>& bipartite_map, const int& num
 }
 
 // payloads only has value at first 512 slots, and more specifically, 290 slots if we use 580 bytes
-void payloadPacking(Ciphertext& result, const vector<Ciphertext>& payloads, const vector<vector<int>>& bipartite_map, const size_t& degree, const SEALContext& context, const GaloisKeys& gal_keys){
+void payloadPacking(Ciphertext& result, const vector<Ciphertext>& payloads, const vector<vector<int>>& bipartite_map, const size_t& degree, const SEALContext& context, const GaloisKeys& gal_keys, const int payloadSize = 512){
     Evaluator evaluator(context);
     if(payloads.size() != bipartite_map.size())
     {
@@ -105,13 +105,13 @@ void payloadPacking(Ciphertext& result, const vector<Ciphertext>& payloads, cons
             Ciphertext temp; // TODOmulti: if need to parllelize, just switch to vector<Ciphertext> temps(bipartite_map.size()*bipartite_map[i].size()). 
             if(bipartite_map[i][j] < 32) // 32 paylods per row
             {
-                auto torotate = degree/2 - bipartite_map[i][j]*512;
+                auto torotate = degree/2 - bipartite_map[i][j]*payloadSize;
                 if((torotate == degree/2))
                     torotate = 0;
                 evaluator.rotate_rows(payloads[i], torotate, gal_keys, temp);
             }
             else{
-                auto torotate = degree/2 - (bipartite_map[i][j]-32)*512;
+                auto torotate = degree/2 - (bipartite_map[i][j]-32)*payloadSize;
                 evaluator.rotate_columns(payloads[i], gal_keys, temp);
                 if((torotate == degree/2))
                     torotate = 0;
