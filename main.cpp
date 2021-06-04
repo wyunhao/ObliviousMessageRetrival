@@ -4,7 +4,7 @@
 using namespace seal;
 
 int main(){
-testEquationSolving();
+testMomerySavingBPlusA10();
     //regevTest();
     //bfvRangeCheckTest();
     //bfvFromRegevTest();

@@ -6,6 +6,7 @@ using namespace seal;
 
 // takes a vector of ciphertexts, and mult them all together result in the first element of the vector
 // depth optimal
+inline
 void EvalMultMany_inpace(vector<Ciphertext>& ciphertexts, const RelinKeys &relin_keys, const SEALContext& context){ // TODOmulti: can be multithreaded easily
     Evaluator evaluator(context);
 
@@ -124,6 +125,51 @@ void evalRangeCheck(Ciphertext& output, const int& range, const RelinKeys &relin
     //cout << "range compute finished" << endl;
     EvalMultMany_inpace(ciphertexts, relin_keys, context);
     output = ciphertexts[0];
+    
+    booleanization(output, relin_keys, context);
+}
+
+// check in range
+// if within [-range, range -1], returns 0, and returns random number in p o/w
+void evalRangeCheckMemorySaving(Ciphertext& output, const int& range, const RelinKeys &relin_keys,\
+                        const size_t& degree, const SEALContext& context, const regevParam& param, const int upperbound = 64){ // we do one level of recursion, so no more than 4096 elements
+    Evaluator evaluator(context);
+    BatchEncoder batch_encoder(context);
+    vector<Ciphertext> ciphertexts(upperbound);
+    vector<Ciphertext> res(range*2/upperbound);
+    int counter = 0;
+    int counter2 = 0;
+    for(int i = 0; i < range; i++){
+        vector<uint64_t> vectorOfInts(degree, i+1); // check for up to -range
+        Plaintext plaintext;
+        batch_encoder.encode(vectorOfInts, plaintext);
+        evaluator.add_plain(output, plaintext, ciphertexts[counter++]);
+        cout << i << endl;
+        if(counter == 64){
+            EvalMultMany_inpace(ciphertexts, relin_keys, context);
+            res[counter2++] = ciphertexts[0];
+            counter = 0;
+            ciphertexts.resize(0);
+            ciphertexts.resize(upperbound);
+        }
+    }
+    for(int i = 0; i < range; i++){
+        vector<uint64_t> vectorOfInts(degree, 65537 - i); // check for up to range - 1, because we include 0 in this 
+        Plaintext plaintext;
+        batch_encoder.encode(vectorOfInts, plaintext);
+        evaluator.add_plain(output, plaintext, ciphertexts[counter++]);
+        cout << i << endl;
+        if(counter == 64){
+            EvalMultMany_inpace(ciphertexts, relin_keys, context);
+            res[counter2++] = ciphertexts[0];
+            counter = 0;
+            ciphertexts.resize(0);
+            ciphertexts.resize(upperbound);
+        }
+    }
+    cout << "range compute finished" << endl;
+    EvalMultMany_inpace(res, relin_keys, context);
+    output = res[0];
     
     booleanization(output, relin_keys, context);
 }
