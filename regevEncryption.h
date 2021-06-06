@@ -10,7 +10,7 @@ using namespace lbcrypto;
 struct regevParam{
     int n;
     int q;
-    int std_dev;
+    double std_dev;
     int m;
     regevParam(){
         n = 500;
@@ -18,7 +18,7 @@ struct regevParam{
         std_dev = 1.6;
         m = 8100; // pk num, we take 8100 to guarantee 2^8100 >> 65537^512 ~ 2^(16*500)
     }
-    regevParam(int n, int q, int std_dev, int m)
+    regevParam(int n, int q, double std_dev, int m)
     : n(n), q(q), std_dev(std_dev), m(m)
     {}
 };
@@ -98,7 +98,7 @@ void regevDec(int& msg, const regevCiphertext& ct, const regevSK& sk, const rege
     r.ModSubFastEq(inner, q);
     r.ModEq(q);
 
-    cout << r << endl;
+    //cout << r << endl;
     msg = (r < q/2)? 0 : 1;
     //cout << msg << endl;
 }

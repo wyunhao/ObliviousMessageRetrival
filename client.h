@@ -24,7 +24,8 @@ void decodeIndices(map<int, int>& pertinentIndices, const Ciphertext& indexPack,
     }
 }
 
-void formRhs(vector<vector<int>>& rhs, const Ciphertext& packedPayloads, const SecretKey& secret_key, const size_t& degree, const SEALContext& context, const int num_of_buckets = 64, const int payloadSlots = 512){ // or 290
+void formRhs(vector<vector<int>>& rhs, const Ciphertext& packedPayloads, const SecretKey& secret_key, const size_t& degree, const SEALContext& context,
+                         const int num_of_buckets = 64, const int payloadSlots = 512){ // or 290
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
     vector<uint64_t> rhsint(degree);

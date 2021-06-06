@@ -92,7 +92,8 @@ void bipartiteGraphGeneration(vector<vector<int>>& bipartite_map, const int& num
 }
 
 // payloads only has value at first 512 slots, and more specifically, 290 slots if we use 580 bytes
-void payloadPacking(Ciphertext& result, const vector<Ciphertext>& payloads, const vector<vector<int>>& bipartite_map, const size_t& degree, const SEALContext& context, const GaloisKeys& gal_keys, const int payloadSize = 512){
+void payloadPacking(Ciphertext& result, const vector<Ciphertext>& payloads, const vector<vector<int>>& bipartite_map, const size_t& degree, 
+                        const SEALContext& context, const GaloisKeys& gal_keys, const int payloadSize = 512){
     Evaluator evaluator(context);
     if(payloads.size() != bipartite_map.size())
     {
@@ -126,4 +127,139 @@ void payloadPacking(Ciphertext& result, const vector<Ciphertext>& payloads, cons
             }
         }
     }
+}
+
+///////////////////////////////////////// MultiThreaded
+
+// MultiThreaded
+// one transaction taking one bit
+// this takes less than 10^-3 sec per transac, single threaded
+void deterministicIndexRetrievalMulti(Ciphertext& indexIndicator, const vector<Ciphertext>& SIC, const SEALContext& context, const size_t& degree, size_t& counter,
+                                    const int threadNum = 8){ // counter is used to optimize memory use, not needed for now
+
+    vector<Ciphertext> temp(threadNum);
+    Evaluator evaluator(context);
+
+    int interval = (SIC.size() / threadNum);
+    int dividor = 0;
+    for(int i = threadNum; i > 0; i--){
+        if(interval*i + (interval+1)*(threadNum-i) == int(SIC.size()))
+            dividor = threadNum - i;
+    }
+    NTL_EXEC_RANGE(SIC.size(), first, last);
+    int indextst = 0;
+    for(int index = 0; index < threadNum; index++){
+        int first1;
+        if(index < dividor){
+            first1 = (interval+1)*index;
+        }
+        else{
+            first1 = (interval+1)*dividor + interval*(index-dividor);
+        }
+        if(last == (int(SIC.size()) - first1))
+            indextst = index;
+    }
+    size_t thecounter = counter + first;
+    auto SICslice = std::vector<Ciphertext>(SIC.begin()+first, SIC.begin()+last);
+    deterministicIndexRetrieval(temp[indextst], SICslice, context, degree, thecounter);
+    NTL_EXEC_RANGE_END;
+
+    for(int i = 0; i< threadNum; i++){
+        if(i == 0)
+            indexIndicator = temp[0];
+        else{
+            evaluator.add_inplace(indexIndicator, temp[i]); // TODOmulti: addition can be performed in a tree shape
+        }
+    }
+    counter += SIC.size();
+}
+
+// Multithreaded
+// payloads only has value at first 512 slots, and more specifically, 290 slots if we use 580 bytes
+void payloadPackingMulti(Ciphertext& result, const vector<Ciphertext>& payloads, const vector<vector<int>>& bipartite_map, const size_t& degree, 
+                        const SEALContext& context, const GaloisKeys& gal_keys, const int payloadSize = 512, const int threadNum = 8){
+    Evaluator evaluator(context);
+    if(payloads.size() != bipartite_map.size())
+    {
+        cout << "Something wrong. Payload num should be the same as the bipartite map size." << endl;
+        return;
+    }
+
+    vector<Ciphertext> temp(threadNum);
+    int interval = (bipartite_map.size() / threadNum);
+    int dividor = 0;
+    for(int i = threadNum; i > 0; i--){
+        if(interval*i + (interval+1)*(threadNum-i) == int(bipartite_map.size()))
+            dividor = threadNum - i;
+    }
+
+    NTL_EXEC_RANGE(bipartite_map.size(), first, last)
+    int indextst = 0;
+    for(int index = 0; index < threadNum; index++){
+        int first1;
+        if(index < dividor){
+            first1 = (interval+1)*index;
+        }
+        else{
+            first1 = (interval+1)*dividor + interval*(index-dividor);
+        }
+        if(last == (int(bipartite_map.size()) - first1))
+            indextst = index;
+    }
+    bool flag = false;
+    for(size_t i = first; i < size_t(last); i++){
+        for(size_t j = 0; j < bipartite_map[i].size(); j++){
+            if(i == 0 && j == 0)
+                continue;
+            Ciphertext tempsingle; // TODOmulti: if need to parllelize, just switch to vector<Ciphertext> temps(bipartite_map.size()*bipartite_map[i].size()). 
+            if(bipartite_map[i][j] < 32) // 32 paylods per row
+            {
+                auto torotate = degree/2 - bipartite_map[i][j]*payloadSize;
+                if((torotate == degree/2))
+                    torotate = 0;
+                evaluator.rotate_rows(payloads[i], torotate, gal_keys, tempsingle);
+            }
+            else{
+                auto torotate = degree/2 - (bipartite_map[i][j]-32)*payloadSize;
+                evaluator.rotate_columns(payloads[i], gal_keys, tempsingle);
+                if((torotate == degree/2))
+                    torotate = 0;
+                evaluator.rotate_rows(tempsingle, torotate, gal_keys, tempsingle);
+            }
+            if(!flag){
+                temp[indextst] = tempsingle;
+                flag = true;
+                //cout << index -1;
+            }
+            else{
+                for(size_t k = 0; k <= j; k++){ // temp should be multipled by j, but since j is usually very small, like 10 or 20 tops, addition is faster
+                    evaluator.add_inplace(temp[indextst], tempsingle); // TODOmulti: addition can be performed in a tree shape
+                }
+            }
+        }
+    }
+    NTL_EXEC_RANGE_END
+
+    for(int i = 0; i < threadNum; i++){
+        if(i == 0)
+            result = temp[i];
+        else
+            evaluator.add_inplace(result, temp[i]); // TODOmulti: addition can be performed in a tree shape
+    }
+}
+
+void payloadRetrievalMulti(vector<Ciphertext>& results, const vector<vector<uint64_t>>& payloads, const vector<Ciphertext>& SIC, const SEALContext& context
+                            , const int threadNum = 8){ // TODOmulti: can be multithreaded extremely easily
+    Evaluator evaluator(context);
+    BatchEncoder batch_encoder(context);
+    results.resize(SIC.size());
+
+    NTL_EXEC_RANGE(SIC.size(), first, last)
+    for(size_t i = first; i < uint(last); i++){
+        Plaintext plain_matrix;
+        batch_encoder.encode(payloads[i], plain_matrix);
+
+        evaluator.multiply_plain(SIC[i], plain_matrix, results[i]);
+    }
+    NTL_EXEC_RANGE_END
 }
