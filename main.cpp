@@ -44,11 +44,11 @@ void preparinngTransactions(vector<vector<regevCiphertext>>& SICregev, vector<ve
     //cout << endl;
 //
     payload = loadData(numOfTransactions, 290);
-    //cout << "Supposed result: \n";
-    //for(int i = 0; i < numOfTransactions; i++){
-    //    if(msgs[i])
-    //        cout << i << ": " << payload[i] << endl;
-    //}
+    cout << "Supposed result: \n";
+    for(int i = 0; i < numOfTransactions; i++){
+        if(msgs[i])
+            cout << i << ": " << payload[i] << endl;
+    }
 }
 
 void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphertext& rhs, SecretKey& sk, // sk just for test
@@ -94,7 +94,23 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
 
     // 4. retrieve indices
     time_start = chrono::high_resolution_clock::now();
-    deterministicIndexRetrievalMulti(lhs, expandedSIC, context, degree, counter);
+    auto temp = vector<Ciphertext>(expandedSIC.begin(), expandedSIC.begin()+numOfTransactions/2);
+    deterministicIndexRetrievalMulti(lhs, temp, context, degree, counter);
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << time_diff.count() << " " << "4\n";
+
+    time_start = chrono::high_resolution_clock::now();
+    auto temp1 = vector<Ciphertext>(expandedSIC.begin()+numOfTransactions/2, expandedSIC.end());
+    Ciphertext lhstemp;
+    deterministicIndexRetrievalMulti(lhstemp, temp1, context, degree, counter);
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << time_diff.count() << " " << "4\n";
+    time_start = chrono::high_resolution_clock::now();
+    Evaluator eval(context);
+    eval.rotate_rows_inplace(lhstemp, degree/2 - numOfTransactions/2/16, gal_keys);
+    eval.add_inplace(lhs, lhstemp);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "4\n";
@@ -148,13 +164,13 @@ void receiverDecoding(Ciphertext& lhsEnc, vector<vector<int>>& bipartite_map, Ci
     // 1. find pertinent indices
     map<int, int> pertinentIndices;
     decodeIndices(pertinentIndices, lhsEnc, numOfTransactions, degree, secret_key, context);
-    //for (map<int, int>::iterator it = pertinentIndices.begin(); it != pertinentIndices.end(); it++)
-    //{
-    //    std::cout << it->first    // string (key)
-    //              << ':'
-    //              << it->second   // string's value 
-    //              << std::endl;
-    //}
+    for (map<int, int>::iterator it = pertinentIndices.begin(); it != pertinentIndices.end(); it++)
+    {
+        std::cout << it->first    // string (key)
+                  << ':'
+                  << it->second   // string's value 
+                  << std::endl;
+    }
     cout << "1\n";
 
     // 2. forming rhs
@@ -171,16 +187,16 @@ void receiverDecoding(Ciphertext& lhsEnc, vector<vector<int>>& bipartite_map, Ci
     auto newrhs = equationSolving(lhs, rhs, payloadSize);
     cout << "4\n";
 
-    //for(size_t i = 0; i < newrhs.size(); i++)
-    //    cout << newrhs[i] << endl;
+    for(size_t i = 0; i < newrhs.size(); i++)
+        cout << newrhs[i] << endl;
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << time_diff.count() << " " << "\n";
+    cout << time_diff.count() << " microseconds for client to decode the result." << "\n";
 }
 
 int main(){
-    int numOfTransactions = 100;
+    int numOfTransactions = 96;
     createDatabase(numOfTransactions, 290); // one time
     cout << "Finishing createDatabase\n";
 

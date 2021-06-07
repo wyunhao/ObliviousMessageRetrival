@@ -5,13 +5,22 @@
 
 // one transaction taking one bit
 // this takes less than 10^-3 sec per transac, single threaded
-void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Ciphertext>& SIC, const SEALContext& context, const size_t& degree, size_t& counter){ // counter is used to optimize memory use, not needed for now
+void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Ciphertext>& SIC, const SEALContext& context, const size_t& degree, size_t& counter
+                                    , bool isMulti = false){ // counter is used to optimize memory use, not needed for now
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
     vector<uint64_t> pod_matrix(degree, 0ULL); // TODOmulti: move inside to the loop for multi-threading
     if(counter + SIC.size() >= 16*degree){
         cout << "counter + SIC.size should be less, please check" << endl;
         return;
+    }
+    if(SIC.size() > 16*512){ // This is because we only recover 512 slots for expandSIC, for efficiency.
+        cout << "Take at most 8192 elements at a time." << endl;
+        return;
+    }
+    auto saver = counter;
+    if(!isMulti){ // if not multi, counter needs to start from 0 and then add back
+        counter = 0;
     }
 
     for(size_t i = 0; i < SIC.size(); i++){
@@ -31,6 +40,10 @@ void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Cipher
         }
         pod_matrix[idx] = 0ULL;
         counter++;
+    }
+
+    if(!isMulti){ // if not multi, counter needs to start from 0 and then add back
+        counter += saver;
     }
 }
 
@@ -159,9 +172,9 @@ void deterministicIndexRetrievalMulti(Ciphertext& indexIndicator, const vector<C
         if(last == (int(SIC.size()) - first1))
             indextst = index;
     }
-    size_t thecounter = counter + first;
+    size_t thecounter = first;
     auto SICslice = std::vector<Ciphertext>(SIC.begin()+first, SIC.begin()+last);
-    deterministicIndexRetrieval(temp[indextst], SICslice, context, degree, thecounter);
+    deterministicIndexRetrieval(temp[indextst], SICslice, context, degree, thecounter, true);
     NTL_EXEC_RANGE_END;
 
     for(int i = 0; i< threadNum; i++){

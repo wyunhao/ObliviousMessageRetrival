@@ -375,8 +375,8 @@ void expandSICMulti(vector<Ciphertext>& expanded, Ciphertext& toExpand, const Ga
         }
         //cout << i << endl;
         evaluator.multiply_plain(temp, plain_matrix, expanded[i]);
-        innerSum_inplace(expanded[i], gal_keys, degree, 32768, context); // This is to make future work less, and slowing by less than double for now.
-        //innerSum_inplace(expanded[i], gal_keys, degree, 290, context); // 580 bytes, and each slot 2 bytes, so totally 290 slots. Can get up to 1KB
+        //innerSum_inplace(expanded[i], gal_keys, degree, 32768, context); // This is to make future work less, and slowing by less than double for now.
+        innerSum_inplace(expanded[i], gal_keys, degree, 290, context); // 580 bytes, and each slot 2 bytes, so totally 290 slots. Can get up to 1KB
     }
     NTL_EXEC_RANGE_END;
 }
