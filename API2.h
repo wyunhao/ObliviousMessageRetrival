@@ -19,10 +19,9 @@ struct SingleDatabaseBlock{
 }
 class Sender{
     public:
-        ClueVector clue;
         Sender();
         ~Sender();
-        void GenerateClue(const CluePublicKey& pk, const PublicParams& param);
+        void GenerateClue(ClueVector& clue, Cluevectorconst CluePublicKey& pk, const PublicParams& param);
         void StreamClue(stringstream& stream /*, const ClueVector& clue*/)
 }
 
@@ -61,13 +60,12 @@ struct DigestedMsg{
 }
 class Detector{
     public:
-        DigestedMsg msg;
         vector<SingleDatabaseBlock> database;
 
         Detector();
         Detector(const PublicParams& param);
         ~Detector();
-        void GenerateDigestedMsgFromDatabase(const DetectionKeySet& detectKey, const PublicParams& param /*vector<SingleDatabaseBlock>& database*/);
+        void GenerateDigestedMsgFromDatabase(DigestedMsg& msg, const DetectionKeySet& detectKey, const PublicParams& param /*vector<SingleDatabaseBlock>& database*/);
         void StreamDigestedMsg(stringstream& stream /*, const DigestedMsg& msg*/);
 }
 
