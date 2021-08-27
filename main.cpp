@@ -52,7 +52,7 @@ void preparinngTransactions(vector<vector<regevCiphertext>>& SICregev, vector<ve
 }
 
 void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphertext& rhs, SecretKey& sk, // sk just for test
-                        const vector<regevCiphertext>& SICregev, const vector<vector<uint64_t>>& payload, vector<Ciphertext>& switchingKey, const RelinKeys& relin_keys, const GaloisKeys& gal_keys,
+                        vector<regevCiphertext>& SICregev, const vector<vector<uint64_t>>& payload, vector<Ciphertext>& switchingKey, const RelinKeys& relin_keys, const GaloisKeys& gal_keys,
                         const size_t& degree, const SEALContext& context, const regevParam& params, const int numOfTransactions, size_t counter = 0, const int payloadSize = 512){
 
     Decryptor decryptor(context, sk);
@@ -65,7 +65,8 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
     // 1. compute b - as
     time_start = chrono::high_resolution_clock::now();
     Ciphertext packedSIC;
-    computeBplusASMulti(packedSIC, SICregev, switchingKey, context, params);
+    computeBplusAS(packedSIC, SICregev, switchingKey, context, params);
+    SICregev.clear();
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     switchingKey.clear();
@@ -74,7 +75,7 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
     // 2. range check
     time_start = chrono::high_resolution_clock::now();
     int rangeToCheck = 64; // range check is from [-rangeToCheck, rangeToCheck-1]
-    evalRangeCheckMemorySavingMulti(packedSIC, rangeToCheck, relin_keys, degree, context, params);
+    evalRangeCheckMemorySaving(packedSIC, rangeToCheck, relin_keys, degree, context, params);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "2\n";
@@ -87,7 +88,7 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
     // 3. expand SIC
     time_start = chrono::high_resolution_clock::now();
     vector<Ciphertext> expandedSIC;
-    expandSICMulti(expandedSIC, packedSIC, gal_keys, int(degree), context, numOfTransactions);
+    expandSICOptimized(expandedSIC, packedSIC, gal_keys, int(degree), context, numOfTransactions);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "3\n";
@@ -95,7 +96,7 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
     // 4. retrieve indices
     time_start = chrono::high_resolution_clock::now();
     auto temp = vector<Ciphertext>(expandedSIC.begin(), expandedSIC.begin()+numOfTransactions/2);
-    deterministicIndexRetrievalMulti(lhs, temp, context, degree, counter);
+    deterministicIndexRetrieval(lhs, temp, context, degree, counter);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "4\n";
@@ -103,7 +104,7 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
     time_start = chrono::high_resolution_clock::now();
     auto temp1 = vector<Ciphertext>(expandedSIC.begin()+numOfTransactions/2, expandedSIC.end());
     Ciphertext lhstemp;
-    deterministicIndexRetrievalMulti(lhstemp, temp1, context, degree, counter);
+    deterministicIndexRetrieval(lhstemp, temp1, context, degree, counter);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "4\n";
@@ -115,26 +116,26 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "4\n";
 
-    // 5. retrieve payloads
-    time_start = chrono::high_resolution_clock::now();
-    vector<Ciphertext> payloadUnpacked(numOfTransactions);
-    payloadRetrievalMulti(payloadUnpacked, payload, expandedSIC, context);
-    time_end = chrono::high_resolution_clock::now();
-    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << time_diff.count() << " " << "5\n";
-
-    // 6. generate bipartite graph. in real application, we return only the seed, but in demo, we directly give the graph
+    // 5. generate bipartite graph. in real application, we return only the seed, but in demo, we directly give the graph
     time_start = chrono::high_resolution_clock::now();
     int repeatition = 5;
     int seed = 3;
     bipartiteGraphGeneration(bipartite_map,numOfTransactions,64,repeatition,seed);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << time_diff.count() << " " << "5\n";
+
+    // 6. retrieve payloads, shift the payload according to the graph
+    time_start = chrono::high_resolution_clock::now();
+    vector<vector<Ciphertext>> payloadUnpacked(numOfTransactions);
+    payloadRetrievalOptimized(payloadUnpacked, payload, bipartite_map, expandedSIC, context);
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "6\n";
 
     // 7. payload paking
     time_start = chrono::high_resolution_clock::now();
-    payloadPackingMulti(rhs, payloadUnpacked, bipartite_map, degree, context, gal_keys);
+    payloadPackingOptimized(rhs, payloadUnpacked, bipartite_map, degree, context, gal_keys);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "7\n";
@@ -239,7 +240,17 @@ int main(){
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
     GaloisKeys gal_keys;
-    keygen.create_galois_keys(gal_keys); //size_t slot_count = batch_encoder.slot_count();
+
+    vector<int> steps = {1, 0, int(poly_modulus_degree/2 - numOfTransactions/2/16)};
+    for(int i = 1; i < 32768/2; i *= 2){
+        steps.push_back(i);
+        //steps.push_back(32768/2 - i);
+    }
+    for(size_t i = 0; i < steps.size(); i++)
+        cout << steps[i] << " ";
+    cout << endl;
+
+    keygen.create_galois_keys(steps, gal_keys); //size_t slot_count = batch_encoder.slot_count();
     vector<Ciphertext> switchingKey;
     genSwitchingKey(switchingKey, context, poly_modulus_degree, public_key, sk, params);
     cout << "Finishing generating detection keys\n";

@@ -142,6 +142,50 @@ void payloadPacking(Ciphertext& result, const vector<Ciphertext>& payloads, cons
     }
 }
 
+// Note that real payload size = payloadSize / 2
+void payloadRetrievalOptimized(vector<vector<Ciphertext>>& results, const vector<vector<uint64_t>>& payloads, const vector<vector<int>>& bipartite_map, 
+                        const vector<Ciphertext>& SIC, const SEALContext& context, const int payloadSize = 512){ // TODOmulti: can be multithreaded extremely easily
+    Evaluator evaluator(context);
+    BatchEncoder batch_encoder(context);
+    results.resize(bipartite_map.size());
+
+    for(size_t i = 0; i < SIC.size(); i++){
+        results[i].resize(bipartite_map[i].size());
+        for(size_t j = 0; j < bipartite_map[i].size(); j++){
+            vector<uint64_t> padded(bipartite_map[i][j]*payloadSize, 0);
+            padded.insert(padded.end(), payloads[i].begin(), payloads[i].end() );
+
+            Plaintext plain_matrix;
+            batch_encoder.encode(padded, plain_matrix);
+
+            evaluator.multiply_plain(SIC[i], plain_matrix, results[i][j]);
+        }
+        
+    }
+}
+
+void payloadPackingOptimized(Ciphertext& result, const vector<vector<Ciphertext>>& payloads, const vector<vector<int>>& bipartite_map, const size_t& degree, 
+                        const SEALContext& context, const GaloisKeys& gal_keys, const int payloadSize = 512){
+    Evaluator evaluator(context);
+    if(payloads.size() != bipartite_map.size())
+    {
+        cout << "Something wrong. Payload num should be the same as the bipartite map size." << endl;
+        return;
+    }
+
+    for(size_t i = 0; i < bipartite_map.size(); i++){
+        for(size_t j = 0; j < bipartite_map[i].size(); j++){
+            if(i == 0 && j == 0)
+                result = payloads[i][j];
+            else{
+                for(size_t k = 0; k <= j; k++){ // temp should be multipled by j, but since j is usually very small, like 10 or 20 tops, addition is faster
+                    evaluator.add_inplace(result, payloads[i][j]); // TODOmulti: addition can be performed in a tree shape
+                }
+            }
+        }
+    }
+}
+
 ///////////////////////////////////////// MultiThreaded
 
 // MultiThreaded
