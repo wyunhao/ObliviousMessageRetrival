@@ -195,13 +195,13 @@ void innerSum_inplace(Ciphertext& output, const GaloisKeys& gal_keys, const size
         Ciphertext temp;
         if(i == degree/2)
         {
-		cout << "innerSum: " << 0 <<endl;
+		//cout << "innerSum: " << 0 <<endl;
             evaluator.rotate_columns(output, gal_keys, temp);
             evaluator.add_inplace(output, temp);
         }
         else
         {
-		cout << "innerSum: " <<  degree/2 - i <<endl;
+		//cout << "innerSum: " <<  degree/2 - i <<endl;
             evaluator.rotate_rows(output, degree/2 - i, gal_keys, temp);
             evaluator.add_inplace(output, temp);
         }
@@ -215,12 +215,16 @@ void expandSIC(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisK
     Evaluator evaluator(context);
     expanded.resize(toExpandNum);
 
+	chrono::high_resolution_clock::time_point time_start, time_end;
+    chrono::microseconds time_diff;
+
     vector<uint64_t> pod_matrix(degree, 0ULL); // TODOmulti: move inside to do multi-threading.
     pod_matrix[0] = 1ULL;
     Plaintext plain_matrix;
     batch_encoder.encode(pod_matrix, plain_matrix);
     for(size_t i = 0; i < toExpandNum; i++){ // TODOmulti: change to do multi-threading.
-        if(i != 0){ // if not 0, need to rotate to place 0
+        time_start = chrono::high_resolution_clock::now();
+	if(i != 0){ // if not 0, need to rotate to place 0
             if(i == degree/2){
                 evaluator.rotate_columns_inplace(toExpand, gal_keys);
             }
@@ -229,8 +233,20 @@ void expandSIC(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisK
             }
         }
         evaluator.multiply_plain(toExpand, plain_matrix, expanded[i]);
+	evaluator.mod_switch_to_next_inplace(expanded[i]);
+	//evaluator.mod_switch_to_next_inplace(expanded[i]);
+
+	time_end = chrono::high_resolution_clock::now();
+        time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+        cout << "expandSIC: " << time_diff.count() << " " << i << "\n";
+
+	time_start = chrono::high_resolution_clock::now();
         innerSum_inplace(expanded[i], gal_keys, degree, 32768, context); // This is to make future work less, and slowing by less than double for now.
-        //innerSum_inplace(expanded[i], gal_keys, degree, 290, context); // 580 bytes, and each slot 2 bytes, so totally 290 slots. Can get up to 1KB
+        time_end = chrono::high_resolution_clock::now();
+        time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+        cout << "expandSIC: " << time_diff.count() << " " << i << "\n\n";
+
+	//innerSum_inplace(expanded[i], gal_keys, degree, 290, context); // 580 bytes, and each slot 2 bytes, so totally 290 slots. Can get up to 1KB
     }
 }
 
@@ -247,16 +263,22 @@ void expandSICOptimized(vector<Ciphertext>& expanded, Ciphertext& toExpand, cons
     Ciphertext tmp1_rot, tmp2_rot;
 
 
-    for(size_t i = 2; i < degree; i*=2){
+    for(size_t i = 2; i <= degree; i*=2){
         time_start = chrono::high_resolution_clock::now();
         cout << "expandSIC optimized: " << i << endl;
         vector<uint64_t> pod_matrix(degree, 0ULL);
         vector<uint64_t> pod_matrix2(degree, 1ULL);
-        for(size_t j = 0; j < i; j+=2){
-            for(size_t k = 0; k < degree/i; k++){
-                pod_matrix[j*degree/i + k] = 1;
-                pod_matrix2[j*degree/i + k] = 0;
+        for(size_t j = 0; j < degree; j+=i){
+            for(size_t k = 0; k < i/2; k++){
+                pod_matrix[j + k] = 1;
+                pod_matrix2[j + k] = 0;
             }
+            
+
+            //for(size_t k = 0; k < degree/i; k++){
+            //    pod_matrix[j*degree/i + k] = 1;
+            //    pod_matrix2[j*degree/i + k] = 0;
+            //}
         }
         for(int i = 0; i < 32768; i++)
             cout << pod_matrix[i] << " ";
@@ -268,21 +290,21 @@ void expandSICOptimized(vector<Ciphertext>& expanded, Ciphertext& toExpand, cons
         batch_encoder.encode(pod_matrix2, plain_matrix2);
 
         auto cur_size = expanded.size();
-        //if(cur_size > toExpandNum)
-            //cur_size = toExpandNum;
+        if(cur_size > toExpandNum)
+            cur_size = toExpandNum;
         for(size_t j = 0; j < cur_size; j++){
             expanded.resize(expanded.size()+1);
             evaluator.multiply_plain(expanded[j], plain_matrix2, expanded[expanded.size()-1]);
             evaluator.multiply_plain_inplace(expanded[j], plain_matrix);
-            if(i == 2){
+            if(i == degree){
                 evaluator.rotate_columns(expanded[j], gal_keys, tmp1_rot);
                 evaluator.rotate_columns(expanded[expanded.size()-1], gal_keys, tmp2_rot);
                 evaluator.add_inplace(expanded[j], tmp1_rot);
                 evaluator.add_inplace(expanded[expanded.size()-1], tmp2_rot);
             }
             else{
-                evaluator.rotate_rows(expanded[j], degree/i, gal_keys, tmp1_rot);
-                evaluator.rotate_rows(expanded[expanded.size()-1], degree/i, gal_keys, tmp2_rot);
+                evaluator.rotate_rows(expanded[j], (degree-i)/2, gal_keys, tmp1_rot);
+                evaluator.rotate_rows(expanded[expanded.size()-1], i/2, gal_keys, tmp2_rot);
                 evaluator.add_inplace(expanded[j], tmp1_rot);
                 evaluator.add_inplace(expanded[expanded.size()-1], tmp2_rot);
             }

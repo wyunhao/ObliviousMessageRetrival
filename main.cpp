@@ -88,7 +88,7 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
     // 3. expand SIC
     time_start = chrono::high_resolution_clock::now();
     vector<Ciphertext> expandedSIC;
-    expandSICOptimized(expandedSIC, packedSIC, gal_keys, int(degree), context, numOfTransactions);
+    expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, numOfTransactions);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "3\n";
@@ -222,7 +222,7 @@ int main(){
     size_t poly_modulus_degree = 32768;
     parms.set_poly_modulus_degree(poly_modulus_degree);
     parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 30, \
-                                                                            30, 30, 30, 30, 30, 30, 30, 30, 30, 30, \
+                                                                            35, 25, 30, 30, 30, 30, 30, 30, 30, 30, \
                                                                             30, 30, 30, 30, 30, 30, 30, 30, 30, 30,\
                                                                             30, 30, 30, 30, 30, 30, 30, 30, 30,\
                                                                              30, 30, 35 }));
@@ -243,8 +243,8 @@ int main(){
 
     vector<int> steps = {1, 0, int(poly_modulus_degree/2 - numOfTransactions/2/16)};
     for(int i = 1; i < 32768/2; i *= 2){
-        steps.push_back(i);
-        //steps.push_back(32768/2 - i);
+	//steps.push_back(i);
+        steps.push_back(32768/2 - i);
     }
     for(size_t i = 0; i < steps.size(); i++)
         cout << steps[i] << " ";
