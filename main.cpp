@@ -20,7 +20,7 @@ void preparinngTransactions(vector<vector<regevCiphertext>>& SICregev, vector<ve
     SICregev[3].resize(numOfTransactions);
     vector<int> msgs(numOfTransactions);
     for(int i = 0; i < numOfTransactions; i++){
-        if(rand()%10 == 0){
+        if(rand()%3 == 0){
             regevEncSK(SICregev[0][i], 0, sk, params);
             regevEncSK(SICregev[1][i], 0, sk, params);
             regevEncSK(SICregev[2][i], 0, sk, params);
@@ -173,16 +173,30 @@ void receiverDecoding(Ciphertext& lhsEnc, vector<vector<int>>& bipartite_map, Ci
                   << std::endl;
     }
     cout << "1\n";
+	time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << time_diff.count() << " microseconds for client to decode the result." << "\n";
+        time_start = chrono::high_resolution_clock::now();
 
     // 2. forming rhs
     vector<vector<int>> rhs;
     formRhs(rhs, rhsEnc, secret_key, degree, context);
     cout << "2\n";
 
+	time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << time_diff.count() << " microseconds for client to decode the result." << "\n";
+        time_start = chrono::high_resolution_clock::now();
+
     // 3. forming lhs
     vector<vector<int>> lhs;
     formLhs(lhs, pertinentIndices, bipartite_map);
     cout << "3\n";
+
+	time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << time_diff.count() << " microseconds for client to decode the result." << "\n";
+	time_start = chrono::high_resolution_clock::now();
 
     // 4. solving equation
     auto newrhs = equationSolving(lhs, rhs, payloadSize);
@@ -227,6 +241,15 @@ int main(){
                                                                             30, 30, 30, 30, 30, 30, 30, 30, 30,\
                                                                              30, 30, 35 }));
     parms.set_plain_modulus(65537);
+
+	prng_seed_type seed;
+            for (auto &i : seed)
+            {
+                i = random_uint64();
+            }
+            auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+            parms.set_random_generator(rng);
+
     SEALContext context(parms, true, sec_level_type::none);
     print_parameters(context); //auto qualifiers = context.first_context_data()->qualifiers();
     KeyGenerator keygen(context);
@@ -241,18 +264,37 @@ int main(){
     BatchEncoder batch_encoder(context);
     GaloisKeys gal_keys;
 
-    vector<int> steps = {1, 0, int(poly_modulus_degree/2 - numOfTransactions/2/16)};
+    vector<int> steps = {0,1,int(poly_modulus_degree/2 - numOfTransactions/2/16)};
     for(int i = 1; i < 32768/2; i *= 2){
 	//steps.push_back(i);
         steps.push_back(32768/2 - i);
     }
-    for(size_t i = 0; i < steps.size(); i++)
+	//stringstream streamrotkey, relinkeystrean, pkstream;
+	//cout << "!!! " << gal_keys.save(streamrotkey);
+     for(size_t i = 0; i < steps.size(); i++)
         cout << steps[i] << " ";
     cout << endl;
 
+	seal::Serializable<RelinKeys> rlk = keygen.create_relin_keys();
+	stringstream stream, stream2;
+	cout << "!!! " << rlk.save(stream) << endl;
+	//seal::Serializable<GaloisKeys> rtk;
+	vector<int> steps2 = {1,2,0};
+	//keygen.create_galois_keys(steps, rtk);
+	//cout << "!!! " << rtk.save(stream) << endl;
+	cout << "123 " << keygen.create_galois_keys(steps2).save(stream2) << endl;
+
     keygen.create_galois_keys(steps, gal_keys); //size_t slot_count = batch_encoder.slot_count();
-    vector<Ciphertext> switchingKey;
+    //cout << "!!! " << gal_keys.save(streamrotkey) << endl;
+	//cout << "!!! "<< relin_keys.save(relinkeystrean) << endl;
+	//cout << "!!! " << public_key.save(pkstream) << endl;
+	vector<Ciphertext> switchingKey;
     genSwitchingKey(switchingKey, context, poly_modulus_degree, public_key, sk, params);
+	for(size_t i = 0; i < switchingKey.size(); i++){
+        //stringstream data_stream;
+        //cout << switchingKey[i].save(data_stream) << " bytes" << endl;
+    }
+
     cout << "Finishing generating detection keys\n";
 
     // step 4. detector operations
