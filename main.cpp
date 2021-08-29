@@ -20,7 +20,7 @@ void preparinngTransactions(vector<vector<regevCiphertext>>& SICregev, vector<ve
     SICregev[3].resize(numOfTransactions);
     vector<int> msgs(numOfTransactions);
     for(int i = 0; i < numOfTransactions; i++){
-        if(rand()%3 == 0){
+        if(rand()%10 == 0){
             regevEncSK(SICregev[0][i], 0, sk, params);
             regevEncSK(SICregev[1][i], 0, sk, params);
             regevEncSK(SICregev[2][i], 0, sk, params);
@@ -80,7 +80,7 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "2\n";
     cout << decryptor.invariant_noise_budget(packedSIC) << " bits left" << endl;
-    for(int i = 0; i < 6; i++)
+    for(int i = 0; i < 5; i++)
         evaluator.mod_switch_to_next_inplace(packedSIC);
     //evaluator.mod_switch_to_next_inplace(packedSIC);
     cout << decryptor.invariant_noise_budget(packedSIC) << " bits left" << endl;
@@ -88,7 +88,7 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
     // 3. expand SIC
     time_start = chrono::high_resolution_clock::now();
     vector<Ciphertext> expandedSIC;
-    expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, numOfTransactions);
+    expandSICAlter(expandedSIC, packedSIC, gal_keys, int(degree), context, numOfTransactions);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "3\n";
@@ -217,7 +217,7 @@ int main(){
 
     // step 1. generate regev sk TODO: change to PK
     // receiver side
-    auto params = regevParam(200, 65537, 1.2, 8100); 
+    auto params = regevParam(10, 65537, 1.2, 8100); 
     auto sk = regevGenerateSecretKey(params);
     cout << "Finishing generating sk for regev cts\n";
 
@@ -239,16 +239,16 @@ int main(){
                                                                             35, 25, 30, 30, 30, 30, 30, 30, 30, 30, \
                                                                             30, 30, 30, 30, 30, 30, 30, 30, 30, 30,\
                                                                             30, 30, 30, 30, 30, 30, 30, 30, 30,\
-                                                                             30, 30, 35 }));
+                                                                             30, 30, 35, 25 }));
     parms.set_plain_modulus(65537);
 
 	prng_seed_type seed;
-            for (auto &i : seed)
-            {
-                i = random_uint64();
-            }
-            auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
-            parms.set_random_generator(rng);
+    for (auto &i : seed)
+    {
+        i = random_uint64();
+    }
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    parms.set_random_generator(rng);
 
     SEALContext context(parms, true, sec_level_type::none);
     print_parameters(context); //auto qualifiers = context.first_context_data()->qualifiers();
@@ -257,7 +257,7 @@ int main(){
     PublicKey public_key;
     keygen.create_public_key(public_key);
     RelinKeys relin_keys;
-    keygen.create_relin_keys(relin_keys);
+    // keygen.create_relin_keys(relin_keys);
     Encryptor encryptor(context, public_key);
     Evaluator evaluator(context);
     Decryptor decryptor(context, secret_key);
@@ -265,39 +265,65 @@ int main(){
     GaloisKeys gal_keys;
 
     vector<int> steps = {0,1,int(poly_modulus_degree/2 - numOfTransactions/2/16)};
-    for(int i = 1; i < 32768/2; i *= 2){
+    for(int i = 1; i < 32768/2; i *= 8){
 	//steps.push_back(i);
         steps.push_back(32768/2 - i);
     }
-	//stringstream streamrotkey, relinkeystrean, pkstream;
-	//cout << "!!! " << gal_keys.save(streamrotkey);
-     for(size_t i = 0; i < steps.size(); i++)
+    for(size_t i = 0; i < steps.size(); i++)
         cout << steps[i] << " ";
     cout << endl;
 
+    seal::Serializable<PublicKey> pk = keygen.create_public_key();
 	seal::Serializable<RelinKeys> rlk = keygen.create_relin_keys();
-	stringstream stream, stream2;
-	cout << "!!! " << rlk.save(stream) << endl;
-	//seal::Serializable<GaloisKeys> rtk;
-	vector<int> steps2 = {1,2,0};
-	//keygen.create_galois_keys(steps, rtk);
-	//cout << "!!! " << rtk.save(stream) << endl;
-	cout << "123 " << keygen.create_galois_keys(steps2).save(stream2) << endl;
+	stringstream streamPK, streamRLK, streamRTK;
+    cout << "pk size: " << pk.save(streamPK) << endl;;
+	cout << "rlk size: " << rlk.save(streamRLK) << endl;
+	cout << "rot key size: " << keygen.create_galois_keys(steps).save(streamRTK) << endl;
 
-    keygen.create_galois_keys(steps, gal_keys); //size_t slot_count = batch_encoder.slot_count();
+    public_key.load(context, streamPK);
+    relin_keys.load(context, streamRLK);
+    gal_keys.load(context, streamRTK); //size_t slot_count = batch_encoder.slot_count();
     //cout << "!!! " << gal_keys.save(streamrotkey) << endl;
 	//cout << "!!! "<< relin_keys.save(relinkeystrean) << endl;
 	//cout << "!!! " << public_key.save(pkstream) << endl;
-	vector<Ciphertext> switchingKey;
-    genSwitchingKey(switchingKey, context, poly_modulus_degree, public_key, sk, params);
-	for(size_t i = 0; i < switchingKey.size(); i++){
-        //stringstream data_stream;
-        //cout << switchingKey[i].save(data_stream) << " bytes" << endl;
-    }
+	Ciphertext switchingKeypacked;
+    genPackedSwitchingKey(switchingKeypacked, context, poly_modulus_degree, public_key, secret_key, sk, params);
+	stringstream data_stream;
+    cout << "LWE sk (encrypted under BFV) size: " << switchingKeypacked.save(data_stream) << " bytes" << endl;
 
     cout << "Finishing generating detection keys\n";
 
     // step 4. detector operations
+
+    // first unpack the LWE sk
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    chrono::microseconds time_diff;
+    time_start = chrono::high_resolution_clock::now();
+    vector<Ciphertext> switchingKey;
+    expandSICAlter(switchingKey, switchingKeypacked, gal_keys, poly_modulus_degree, context, params.n);
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << time_diff.count() << " microseconds for expanding LWE sk." << "\n";
+    for(int i = 0; i < params.n; i++){
+        Plaintext plain_result;
+        vector<uint64_t> tst(32768);
+        decryptor.decrypt(switchingKey[i], plain_result);
+        batch_encoder.decode(plain_result, tst);
+        cout << tst[0] << " " << tst[1] << "   " << sk[i] << endl;
+        cout << decryptor.invariant_noise_budget(switchingKey[i]) << " bits left" << endl;
+    }
+    /*switchingKey.clear();
+    genSwitchingKey(switchingKey, context, poly_modulus_degree, public_key, sk, params);\
+    for(int i = 0; i < params.n; i++){
+        Plaintext plain_result;
+        vector<uint64_t> tst(32768);
+        decryptor.decrypt(switchingKey[i], plain_result);
+        batch_encoder.decode(plain_result, tst);
+        cout << tst[0] << " " << tst[1] << "   " << sk[i] << endl;
+        cout << decryptor.invariant_noise_budget(switchingKey[i]) << " bits left" << endl;
+    }*/
+    
+
     Ciphertext lhs, rhs;
     //evaluator.encrypt_zero(rhs);
     vector<vector<int>> bipartite_map;
