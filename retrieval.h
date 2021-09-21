@@ -154,6 +154,8 @@ void payloadRetrievalOptimized(vector<vector<Ciphertext>>& results, const vector
         for(size_t j = 0; j < bipartite_map[i].size(); j++){
             vector<uint64_t> padded(bipartite_map[i][j]*payloadSize, 0);
             padded.insert(padded.end(), payloads[i].begin(), payloads[i].end() );
+		for(size_t k = 0; k < padded.size(); k++)
+			{padded[k] *= int(j+1); padded[k] %= 65537;}
 
             Plaintext plain_matrix;
             batch_encoder.encode(padded, plain_matrix);
@@ -178,7 +180,7 @@ void payloadPackingOptimized(Ciphertext& result, const vector<vector<Ciphertext>
             if(i == 0 && j == 0)
                 result = payloads[i][j];
             else{
-                for(size_t k = 0; k <= j; k++){ // temp should be multipled by j, but since j is usually very small, like 10 or 20 tops, addition is faster
+                for(size_t k = 0; k < 1; k++){ // temp should be multipled by j, but since j is usually very small, like 10 or 20 tops, addition is faster
                     evaluator.add_inplace(result, payloads[i][j]); // TODOmulti: addition can be performed in a tree shape
                 }
             }

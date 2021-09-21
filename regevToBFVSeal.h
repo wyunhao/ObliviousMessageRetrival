@@ -203,6 +203,56 @@ void evalRangeCheckMemorySaving(Ciphertext& output, const int& range, const Reli
     evaluator.add_plain_inplace(output, plaintext);
 }
 
+// check in range
+// if within [-range, range -1], returns 0, and returns random number in p o/w
+void evalRangeCheckMemorySavingOptimized(Ciphertext& output, const int& range, const RelinKeys &relin_keys,\
+                        const size_t& degree, const SEALContext& context, const regevParam& param, const int upperbound = 64){ // we do one level of recursion, so no more than 4096 elements
+    Evaluator evaluator(context);
+    BatchEncoder batch_encoder(context);
+    vector<Ciphertext> ciphertexts(upperbound);
+    vector<Ciphertext> res(range*2/upperbound);
+    int counter = 0;
+    int counter2 = 0;
+    evaluator.square_inplace(output);
+    evaluator.relinearize_inplace(output, relin_keys);
+    evaluator.mod_switch_to_next_inplace(output);
+
+    for(int i = 0; i < range; i++){
+        int squared = (i*i)%65537;
+        if(squared != ((((65537-i)*(65537-i))%65537)))
+            cout << "what! " << squared << " " << (65537-i) << " " << (65537-i)*(65537-i) << " " << (((65537-i)*(65537-i))%65537) << endl;
+        if(i != 0)
+            squared = 65537-squared;
+        
+        vector<uint64_t> vectorOfInts(degree, uint64_t(squared)); // check for up to -range
+        Plaintext plaintext;
+        batch_encoder.encode(vectorOfInts, plaintext);
+        evaluator.add_plain(output, plaintext, ciphertexts[counter++]);
+        // cout << i << endl;
+        if(counter == 64){
+            cout << "???" << endl;
+            EvalMultMany_inpace(ciphertexts, relin_keys, context);
+            res[counter2++] = ciphertexts[0];
+            counter = 0;
+            ciphertexts.resize(0);
+            ciphertexts.resize(upperbound);
+            cout << "???" << endl;
+        }
+    }
+    cout << "range compute finished" << endl;
+    if(counter2 > 1)
+        EvalMultMany_inpace(res, relin_keys, context);
+    output = res[0];
+    
+    booleanization(output, relin_keys, context);
+    Plaintext plaintext;
+    vector<uint64_t> vectorOfInts(degree, 1);
+    batch_encoder.encode(vectorOfInts, plaintext);
+    evaluator.negate_inplace(output);
+    evaluator.add_plain_inplace(output, plaintext);
+}
+
+
 // innersum up to toCover amount, O(log(toCover)) time
 void innerSum_inplace(Ciphertext& output, const GaloisKeys& gal_keys, const size_t& degree,
                 const size_t& toCover, const SEALContext& context){

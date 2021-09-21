@@ -75,12 +75,12 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
     // 2. range check
     time_start = chrono::high_resolution_clock::now();
     int rangeToCheck = 64; // range check is from [-rangeToCheck, rangeToCheck-1]
-    evalRangeCheckMemorySaving(packedSIC, rangeToCheck, relin_keys, degree, context, params);
+    evalRangeCheckMemorySavingOptimized(packedSIC, rangeToCheck, relin_keys, degree, context, params);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "2\n";
     cout << decryptor.invariant_noise_budget(packedSIC) << " bits left" << endl;
-    for(int i = 0; i < 5; i++)
+    for(int i = 0; i < 6; i++)
         evaluator.mod_switch_to_next_inplace(packedSIC);
     //evaluator.mod_switch_to_next_inplace(packedSIC);
     cout << decryptor.invariant_noise_budget(packedSIC) << " bits left" << endl;
@@ -88,7 +88,7 @@ void serverOperations(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphe
     // 3. expand SIC
     time_start = chrono::high_resolution_clock::now();
     vector<Ciphertext> expandedSIC;
-    expandSICAlter(expandedSIC, packedSIC, gal_keys, int(degree), context, numOfTransactions);
+    expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, numOfTransactions);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "3\n";
@@ -239,7 +239,7 @@ int main(){
                                                                             35, 25, 30, 30, 30, 30, 30, 30, 30, 30, \
                                                                             30, 30, 30, 30, 30, 30, 30, 30, 30, 30,\
                                                                             30, 30, 30, 30, 30, 30, 30, 30, 30,\
-                                                                             30, 30, 35, 25 }));
+                                                                             30, 30, 35 }));
     parms.set_plain_modulus(65537);
 
 	prng_seed_type seed;
@@ -265,7 +265,7 @@ int main(){
     GaloisKeys gal_keys;
 
     vector<int> steps = {0,1,int(poly_modulus_degree/2 - numOfTransactions/2/16)};
-    for(int i = 1; i < 32768/2; i *= 8){
+    for(int i = 1; i < 32768/2; i *= 2){
 	//steps.push_back(i);
         steps.push_back(32768/2 - i);
     }
@@ -312,7 +312,7 @@ int main(){
         cout << tst[0] << " " << tst[1] << "   " << sk[i] << endl;
         cout << decryptor.invariant_noise_budget(switchingKey[i]) << " bits left" << endl;
     }
-    /*switchingKey.clear();
+    switchingKey.clear();
     genSwitchingKey(switchingKey, context, poly_modulus_degree, public_key, sk, params);\
     for(int i = 0; i < params.n; i++){
         Plaintext plain_result;
@@ -321,7 +321,7 @@ int main(){
         batch_encoder.decode(plain_result, tst);
         cout << tst[0] << " " << tst[1] << "   " << sk[i] << endl;
         cout << decryptor.invariant_noise_budget(switchingKey[i]) << " bits left" << endl;
-    }*/
+    }
     
 
     Ciphertext lhs, rhs;
