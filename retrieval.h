@@ -5,32 +5,35 @@
 
 // one transaction taking one bit
 // this takes less than 10^-3 sec per transac, single threaded
-void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Ciphertext>& SIC, const SEALContext& context, const size_t& degree, size_t& counter
+void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Ciphertext>& SIC, const SEALContext& context, 
+                                    const size_t& degree, const size_t& start
                                     , bool isMulti = false){ // counter is used to optimize memory use, not needed for now
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
     vector<uint64_t> pod_matrix(degree, 0ULL); // TODOmulti: move inside to the loop for multi-threading
-    if(counter + SIC.size() >= 16*degree){
+    if(start + SIC.size() >= 16*degree){
         cout << "counter + SIC.size should be less, please check" << endl;
         return;
     }
-    if(SIC.size() > 16*512){ // This is because we only recover 512 slots for expandSIC, for efficiency.
-        cout << "Take at most 8192 elements at a time." << endl;
+    if(SIC.size() > 16*306){ // This is because we only recover 306 slots for expandSIC, for efficiency.
+        cout << "Take at most 4896 elements at a time." << endl;
         return;
     }
-    auto saver = counter;
-    if(!isMulti){ // if not multi, counter needs to start from 0 and then add back
-        counter = 0;
-    }
+    // auto saver = counter;
+    //if(!isMulti){ // if not multi, counter needs to start from 0 and then add back
+    //    counter = 0;
+    //}
+
+    // cout << "counter: " << start << endl;
 
     for(size_t i = 0; i < SIC.size(); i++){
-        size_t idx = counter/16; // modulus is 65537, so we can support at most 16 bits per slot
-        size_t shift = counter % 16;
+        size_t idx = (i+start)/16; // modulus is 65537, so we can support at most 16 bits per slot
+        size_t shift = (i+start) % 16;
         pod_matrix[idx] = (1<<shift);
         Plaintext plain_matrix;
         batch_encoder.encode(pod_matrix, plain_matrix);
 
-        if(i == 0){
+        if(i == 0 && start == 0){
             evaluator.multiply_plain(SIC[i], plain_matrix, indexIndicator);
         }
         else{
@@ -39,40 +42,80 @@ void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Cipher
             evaluator.add_inplace(indexIndicator, temp);
         }
         pod_matrix[idx] = 0ULL;
-        counter++;
     }
 
-    if(!isMulti){ // if not multi, counter needs to start from 0 and then add back
-        counter += saver;
-    }
+    //if(!isMulti){ // if not multi, counter needs to start from 0 and then add back
+    //    counter += saver;
+    //}
 }
 
-vector<int> randomizedIndexRetrieval(Ciphertext& indexIndicator, const vector<Ciphertext>& SIC, const SEALContext& context, const size_t& degree, size_t& counter, const int& seed){ // counter is used to optimize memory use, not needed for now
-    srand(seed);
+void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector<Ciphertext>& indexCounters, const vector<Ciphertext>& SIC, const SEALContext& context, 
+                                        const PublicKey& BFVpk, size_t& counter, const size_t& degree, size_t C){ // counter is used to optimize memory use, not needed for now
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
+    Encryptor encryptor(context, BFVpk);
     vector<uint64_t> pod_matrix(degree, 0ULL); // TODOmulti: move inside to the loop for multi-threading
-    vector<int> rand_map(SIC.size());
-    for(size_t i = 0; i < SIC.size(); i++){
-        rand_map[i] = rand()%(16*degree);
-        size_t idx = rand_map[i]/16; // modulus is 65537, so we can support at most 16 bits per slot
-        size_t shift = rand_map[i]%16;
-        pod_matrix[idx] = (1<<shift);
-        Plaintext plain_matrix;
-        batch_encoder.encode(pod_matrix, plain_matrix);
+    srand(time(NULL));
 
-        if(i == 0){
-            evaluator.multiply_plain(SIC[i], plain_matrix, indexIndicator);
+    if(counter == 0){ // first msg
+        indexIndicator.resize(C);
+        indexCounters.resize(C);
+        for(size_t i = 0; i < C; i++){
+            indexIndicator[i].resize(2); // 2 cts allow 65537^2 total messages, which is in general enough so we hard code this.
+            encryptor.encrypt_zero(indexIndicator[i][0]);
+            encryptor.encrypt_zero(indexIndicator[i][1]);
+            encryptor.encrypt_zero(indexCounters[i]);
+            evaluator.mod_switch_to_inplace(indexIndicator[i][0], SIC[0].parms_id());
+            evaluator.mod_switch_to_inplace(indexIndicator[i][1], SIC[0].parms_id());
+            evaluator.mod_switch_to_inplace(indexCounters[i], SIC[0].parms_id());
         }
-        else{
-            Ciphertext temp;
-            evaluator.multiply_plain(SIC[i], plain_matrix, temp);
-            evaluator.add_inplace(indexIndicator, temp);
-        }
-        pod_matrix[idx] = 0ULL;
-        counter++;
     }
-    return rand_map; // It's the same to just maintain the seed. This is just for implementation easiness.
+
+    for(size_t i = 0; i < SIC.size(); i++){
+        // cout << "hey!" << endl;
+        for(size_t j = 0; j < C; j++){
+            // cout <<"here iteration: " << i << " " << j << ": ";
+            size_t index = rand()%degree;
+            // cout << index << " ";
+
+            vector<uint64_t> pod_matrix(degree, 0ULL);
+            Ciphertext temp;
+            Plaintext plain_matrix;
+
+            pod_matrix[index] = counter/65537;
+            if(pod_matrix[index] == 0){
+                // then nothing to do
+            } else {
+                batch_encoder.encode(pod_matrix, plain_matrix);
+                evaluator.multiply_plain(SIC[i], plain_matrix, temp);
+                evaluator.add_inplace(indexIndicator[j][0], temp);
+            }
+
+            // cout << counter << " ";
+
+            pod_matrix[index] = counter%65537;
+            if(pod_matrix[index] == 0){
+                // then nothing to do
+            } else {
+                batch_encoder.encode(pod_matrix, plain_matrix);
+                evaluator.multiply_plain(SIC[i], plain_matrix, temp);
+                evaluator.add_inplace(indexIndicator[j][1], temp);
+            }
+
+            // cout << i<< endl;
+
+            pod_matrix[index] = 1;
+            if(pod_matrix[index] == 0){
+                // then nothing to do
+            } else {
+                batch_encoder.encode(pod_matrix, plain_matrix);
+                evaluator.multiply_plain(SIC[i], plain_matrix, temp);
+                evaluator.add_inplace(indexCounters[j], temp);
+            }
+        }
+        counter += 1;
+    }
+    return;
 }
 
 void payloadRetrieval(vector<Ciphertext>& results, const vector<vector<uint64_t>>& payloads, const vector<Ciphertext>& SIC, const SEALContext& context){ // TODOmulti: can be multithreaded extremely easily
@@ -104,9 +147,29 @@ void bipartiteGraphGeneration(vector<vector<int>>& bipartite_map, const int& num
     }
 }
 
-// payloads only has value at first 512 slots, and more specifically, 290 slots if we use 580 bytes
+void bipartiteGraphWeightsGeneration(vector<vector<int>>& bipartite_map, vector<vector<int>>& weights, const int& num_of_transactions, const int& num_of_buckets, const int& repetition, const int& seed){
+    srand(seed);
+    bipartite_map.resize(num_of_transactions);
+    weights.resize(num_of_transactions);
+    for(int i = 0; i < num_of_transactions; i++)
+    {
+        bipartite_map[i].resize(repetition, -1);
+        weights[i].resize(repetition, -1);
+        for(int j = 0; j < repetition; j++){
+            int temp = rand()%num_of_buckets;
+            while(find(bipartite_map[i].begin(), bipartite_map[i].end(), temp) != bipartite_map[i].end()){
+                temp = rand()%num_of_buckets;
+            }
+            bipartite_map[i][j] = temp;
+
+            weights[i][j] = rand()%65536 + 1;
+        }
+    }
+}
+
+// payloads only has value at first 306 slots, and more specifically, 306 slots if we use 580 bytes
 void payloadPacking(Ciphertext& result, const vector<Ciphertext>& payloads, const vector<vector<int>>& bipartite_map, const size_t& degree, 
-                        const SEALContext& context, const GaloisKeys& gal_keys, const int payloadSize = 512){
+                        const SEALContext& context, const GaloisKeys& gal_keys, const int payloadSize = 306){
     Evaluator evaluator(context);
     if(payloads.size() != bipartite_map.size())
     {
@@ -143,19 +206,19 @@ void payloadPacking(Ciphertext& result, const vector<Ciphertext>& payloads, cons
 }
 
 // Note that real payload size = payloadSize / 2
-void payloadRetrievalOptimized(vector<vector<Ciphertext>>& results, const vector<vector<uint64_t>>& payloads, const vector<vector<int>>& bipartite_map, 
-                        const vector<Ciphertext>& SIC, const SEALContext& context, const int payloadSize = 512){ // TODOmulti: can be multithreaded extremely easily
+void payloadRetrievalOptimizedwithWeights(vector<vector<Ciphertext>>& results, const vector<vector<uint64_t>>& payloads, const vector<vector<int>>& bipartite_map, vector<vector<int>>& weights,
+                        const vector<Ciphertext>& SIC, const SEALContext& context, const size_t& start = 0, const int payloadSize = 306){ // TODOmulti: can be multithreaded extremely easily
     Evaluator evaluator(context);
     BatchEncoder batch_encoder(context);
-    results.resize(bipartite_map.size());
+    results.resize(SIC.size());
 
     for(size_t i = 0; i < SIC.size(); i++){
-        results[i].resize(bipartite_map[i].size());
-        for(size_t j = 0; j < bipartite_map[i].size(); j++){
-            vector<uint64_t> padded(bipartite_map[i][j]*payloadSize, 0);
-            padded.insert(padded.end(), payloads[i].begin(), payloads[i].end() );
-		for(size_t k = 0; k < padded.size(); k++)
-			{padded[k] *= int(j+1); padded[k] %= 65537;}
+        results[i].resize(bipartite_map[i+start].size());
+        for(size_t j = 0; j < bipartite_map[i+start].size(); j++){
+            vector<uint64_t> padded(bipartite_map[i+start][j]*payloadSize, 0);
+            padded.insert(padded.end(), payloads[i+start].begin(), payloads[i+start].end() );
+		    for(size_t k = 0; k < padded.size(); k++)
+		    	{padded[k] *= weights[i+start][j]; padded[k] %= 65537;} // weights, to be changed.
 
             Plaintext plain_matrix;
             batch_encoder.encode(padded, plain_matrix);
@@ -166,22 +229,47 @@ void payloadRetrievalOptimized(vector<vector<Ciphertext>>& results, const vector
     }
 }
 
-void payloadPackingOptimized(Ciphertext& result, const vector<vector<Ciphertext>>& payloads, const vector<vector<int>>& bipartite_map, const size_t& degree, 
-                        const SEALContext& context, const GaloisKeys& gal_keys, const int payloadSize = 512){
+// Note that real payload size = payloadSize / 2
+void payloadRetrievalOptimized(vector<vector<Ciphertext>>& results, const vector<vector<uint64_t>>& payloads, const vector<vector<int>>& bipartite_map, 
+                        const vector<Ciphertext>& SIC, const SEALContext& context, const size_t& start = 0, const int payloadSize = 306){ // TODOmulti: can be multithreaded extremely easily
     Evaluator evaluator(context);
-    if(payloads.size() != bipartite_map.size())
-    {
-        cout << "Something wrong. Payload num should be the same as the bipartite map size." << endl;
-        return;
-    }
+    BatchEncoder batch_encoder(context);
+    results.resize(SIC.size());
 
-    for(size_t i = 0; i < bipartite_map.size(); i++){
-        for(size_t j = 0; j < bipartite_map[i].size(); j++){
-            if(i == 0 && j == 0)
+    for(size_t i = 0; i < SIC.size(); i++){
+        results[i].resize(bipartite_map[i+start].size());
+        for(size_t j = 0; j < bipartite_map[i+start].size(); j++){
+            vector<uint64_t> padded(bipartite_map[i+start][j]*payloadSize, 0);
+            padded.insert(padded.end(), payloads[i+start].begin(), payloads[i+start].end() );
+		for(size_t k = 0; k < padded.size(); k++)
+			{padded[k] *= int(j+1); padded[k] %= 65537;} // weights, to be changed.
+
+            Plaintext plain_matrix;
+            batch_encoder.encode(padded, plain_matrix);
+
+            evaluator.multiply_plain(SIC[i], plain_matrix, results[i][j]);
+        }
+        
+    }
+}
+
+
+void payloadPackingOptimized(Ciphertext& result, const vector<vector<Ciphertext>>& payloads, const vector<vector<int>>& bipartite_map, const size_t& degree, 
+                        const SEALContext& context, const GaloisKeys& gal_keys, const size_t& start = 0, const int payloadSize = 306){
+    Evaluator evaluator(context);
+    //if(payloads.size() != bipartite_map.size())
+    //{
+    //    cout << "Something wrong. Payload num should be the same as the bipartite map size." << endl;
+    //    return;
+    //}
+
+    for(size_t i = 0; i < payloads.size(); i++){
+        for(size_t j = 0; j < bipartite_map[i+start].size(); j++){
+            if(i == 0 && j == 0 && start == 0)
                 result = payloads[i][j];
             else{
-                for(size_t k = 0; k < 1; k++){ // temp should be multipled by j, but since j is usually very small, like 10 or 20 tops, addition is faster
-                    evaluator.add_inplace(result, payloads[i][j]); // TODOmulti: addition can be performed in a tree shape
+                for(size_t k = 0; k < 1; k++){ 
+                    evaluator.add_inplace(result, payloads[i][j]); 
                 }
             }
         }
@@ -234,9 +322,9 @@ void deterministicIndexRetrievalMulti(Ciphertext& indexIndicator, const vector<C
 }
 
 // Multithreaded
-// payloads only has value at first 512 slots, and more specifically, 290 slots if we use 580 bytes
+// payloads only has value at first 306 slots, and more specifically, 306 slots if we use 580 bytes
 void payloadPackingMulti(Ciphertext& result, const vector<Ciphertext>& payloads, const vector<vector<int>>& bipartite_map, const size_t& degree, 
-                        const SEALContext& context, const GaloisKeys& gal_keys, const int payloadSize = 512, const int threadNum = 8){
+                        const SEALContext& context, const GaloisKeys& gal_keys, const int payloadSize = 306, const int threadNum = 8){
     Evaluator evaluator(context);
     if(payloads.size() != bipartite_map.size())
     {

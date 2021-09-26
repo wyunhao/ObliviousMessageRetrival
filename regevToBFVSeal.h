@@ -4,6 +4,7 @@
 #include "regevEncryption.h"
 #include "seal/seal.h"
 #include <NTL/BasicThreadPool.h>
+#include "global.h"
 using namespace seal;
 
 // takes a vector of ciphertexts, and mult them all together result in the first element of the vector
@@ -13,6 +14,7 @@ void EvalMultMany_inpace(vector<Ciphertext>& ciphertexts, const RelinKeys &relin
     Evaluator evaluator(context);
 
     while(ciphertexts.size() != 1){
+        // cout << ciphertexts.size() << endl;
         for(size_t i = 0; i < ciphertexts.size()/2; i++){
             //if(i % 100 == 0)
             //    cout << "hello " << i << endl;
@@ -62,7 +64,7 @@ void genSwitchingKey(vector<Ciphertext>& switchingKey, const SEALContext& contex
 }
 
 // take regev sk's and output switching key, which is a ciphertext of size n, where n is the regev ciphertext dimension
-void genPackedSwitchingKey(Ciphertext& switchingKey, const SEALContext& context, const size_t& degree,\
+seal::Serializable<Ciphertext> genPackedSwitchingKey(const SEALContext& context, const size_t& degree,\
                          const PublicKey& BFVpk, const SecretKey& BFVsk, const regevSK& regSk, const regevParam& params){ // TODOmulti: can be multithreaded easily
     BatchEncoder batch_encoder(context);
     Encryptor encryptor(context, BFVpk);
@@ -74,7 +76,7 @@ void genPackedSwitchingKey(Ciphertext& switchingKey, const SEALContext& context,
     }
     Plaintext plaintext;
     batch_encoder.encode(skInt, plaintext);
-    encryptor.encrypt_symmetric(plaintext, switchingKey);
+    return encryptor.encrypt_symmetric(plaintext);
 }
 
 // compute b - as
@@ -213,14 +215,13 @@ void evalRangeCheckMemorySavingOptimized(Ciphertext& output, const int& range, c
     vector<Ciphertext> res(range*2/upperbound);
     int counter = 0;
     int counter2 = 0;
+    // evaluator.mod_switch_to_next_inplace(output);
     evaluator.square_inplace(output);
     evaluator.relinearize_inplace(output, relin_keys);
     evaluator.mod_switch_to_next_inplace(output);
 
     for(int i = 0; i < range; i++){
         int squared = (i*i)%65537;
-        if(squared != ((((65537-i)*(65537-i))%65537)))
-            cout << "what! " << squared << " " << (65537-i) << " " << (65537-i)*(65537-i) << " " << (((65537-i)*(65537-i))%65537) << endl;
         if(i != 0)
             squared = 65537-squared;
         
@@ -230,20 +231,32 @@ void evalRangeCheckMemorySavingOptimized(Ciphertext& output, const int& range, c
         evaluator.add_plain(output, plaintext, ciphertexts[counter++]);
         // cout << i << endl;
         if(counter == 64){
-            cout << "???" << endl;
             EvalMultMany_inpace(ciphertexts, relin_keys, context);
             res[counter2++] = ciphertexts[0];
             counter = 0;
             ciphertexts.resize(0);
             ciphertexts.resize(upperbound);
-            cout << "???" << endl;
         }
     }
     cout << "range compute finished" << endl;
-    if(counter2 > 1)
+    if(counter != 0){
+        cout << counter << "\n";
+        ciphertexts.resize(counter);
+        EvalMultMany_inpace(ciphertexts, relin_keys, context);
+        res[counter2++] = ciphertexts[0];
+        for(auto i = counter; i <= upperbound/2; i *=2)
+            evaluator.mod_switch_to_next_inplace(res[counter2-1]);
+        counter = 0;
+        ciphertexts.resize(0);
+        ciphertexts.resize(upperbound);
+    }
+    if(counter2 > 1){
+        res.resize(counter2);
         EvalMultMany_inpace(res, relin_keys, context);
+    }
     output = res[0];
     
+    evaluator.mod_switch_to_next_inplace(output);
     booleanization(output, relin_keys, context);
     Plaintext plaintext;
     vector<uint64_t> vectorOfInts(degree, 1);
@@ -268,7 +281,7 @@ void innerSum_inplace(Ciphertext& output, const GaloisKeys& gal_keys, const size
         else
         {
 		//cout << "innerSum: " <<  degree/2 - i <<endl;
-            evaluator.rotate_rows(output, degree/2 - i, gal_keys, temp);
+            evaluator.rotate_rows(output, i, gal_keys, temp);
             evaluator.add_inplace(output, temp);
         }
     }
@@ -288,31 +301,32 @@ void expandSIC(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisK
     pod_matrix[0] = 1ULL;
     Plaintext plain_matrix;
     batch_encoder.encode(pod_matrix, plain_matrix);
-    for(size_t i = 0+start; i < toExpandNum+start; i++){ // TODOmulti: change to do multi-threading.
+    for(size_t i = 0; i < toExpandNum; i++){ // TODOmulti: change to do multi-threading.
         // time_start = chrono::high_resolution_clock::now();
-	if(i != 0){ // if not 0, need to rotate to place 0
-            if(i == degree/2){
+	    if((i+start) != 0){ // if not 0, need to rotate to place 0
+            if((i+start) == degree/2){
                 evaluator.rotate_columns_inplace(toExpand, gal_keys);
+                evaluator.rotate_rows_inplace(toExpand, 1, gal_keys); 
             }
             else{
                 evaluator.rotate_rows_inplace(toExpand, 1, gal_keys);
             }
         }
         evaluator.multiply_plain(toExpand, plain_matrix, expanded[i]);
-	evaluator.mod_switch_to_next_inplace(expanded[i]);
-	//evaluator.mod_switch_to_next_inplace(expanded[i]);
+	    evaluator.mod_switch_to_next_inplace(expanded[i]);
+	    //evaluator.mod_switch_to_next_inplace(expanded[i]);
 
-	// time_end = chrono::high_resolution_clock::now();
-        // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-        // cout << "expandSIC: " << time_diff.count() << " " << i << "\n";
+	    // time_end = chrono::high_resolution_clock::now();
+            // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+            // cout << "expandSIC: " << time_diff.count() << " " << i << "\n";
 
-	// time_start = chrono::high_resolution_clock::now();
+	    // time_start = chrono::high_resolution_clock::now();
         innerSum_inplace(expanded[i], gal_keys, degree, degree, context); // This is to make future work less, and slowing by less than double for now.
         // time_end = chrono::high_resolution_clock::now();
         // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
         // cout << "expandSIC: " << time_diff.count() << " " << i << "\n\n";
 
-	//innerSum_inplace(expanded[i], gal_keys, degree, 290, context); // 580 bytes, and each slot 2 bytes, so totally 290 slots. Can get up to 1KB
+	//innerSum_inplace(expanded[i], gal_keys, degree, 306, context); // 580 bytes, and each slot 2 bytes, so totally 306 slots. Can get up to 1KB
     }
 }
 
@@ -359,7 +373,7 @@ void expandSICAlter(vector<Ciphertext>& expanded, Ciphertext& toExpand, const Ga
     batch_encoder.encode(pod_matrix, plain_matrix);
     for(size_t i = 0+start; i < toExpandNum+start; i++){ // TODOmulti: change to do multi-threading.
         // time_start = chrono::high_resolution_clock::now();
-	if(i != 0){ // if not 0, need to rotate to place 0
+	    if(i != 0){ // if not 0, need to rotate to place 0
             if(i == degree/2){
                 evaluator.rotate_columns_inplace(toExpand, gal_keys);
             }
@@ -381,7 +395,7 @@ void expandSICAlter(vector<Ciphertext>& expanded, Ciphertext& toExpand, const Ga
         // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
         // cout << "expandSIC: " << time_diff.count() << " " << i << "\n\n";
 
-	//innerSum_inplace(expanded[i], gal_keys, degree, 290, context); // 580 bytes, and each slot 2 bytes, so totally 290 slots. Can get up to 1KB
+	//innerSum_inplace(expanded[i], gal_keys, degree, 306, context); // 580 bytes, and each slot 2 bytes, so totally 306 slots. Can get up to 1KB
     }
 }
 
@@ -415,12 +429,12 @@ void expandSICOptimized(vector<Ciphertext>& expanded, Ciphertext& toExpand, cons
             //    pod_matrix2[j*degree/i + k] = 0;
             //}
         }
-        for(int i = 0; i < 32768; i++)
-            cout << pod_matrix[i] << " ";
-        cout << endl;
-        for(int i = 0; i < 32768; i++)
-            cout << pod_matrix2[i] << " ";
-        cout << endl << endl;;
+        // for(int i = 0; i < 32768; i++)
+        //     cout << pod_matrix[i] << " ";
+        // cout << endl;
+        // for(int i = 0; i < 32768; i++)
+        //     cout << pod_matrix2[i] << " ";
+        // cout << endl << endl;;
         batch_encoder.encode(pod_matrix, plain_matrix);
         batch_encoder.encode(pod_matrix2, plain_matrix2);
 
@@ -596,8 +610,8 @@ void expandSICMulti(vector<Ciphertext>& expanded, Ciphertext& toExpand, const Ga
         }
         //cout << i << endl;
         evaluator.multiply_plain(temp, plain_matrix, expanded[i]);
-        //innerSum_inplace(expanded[i], gal_keys, degree, 32768, context); // This is to make future work less, and slowing by less than double for now.
-        innerSum_inplace(expanded[i], gal_keys, degree, 290, context); // 580 bytes, and each slot 2 bytes, so totally 290 slots. Can get up to 1KB
+        //innerSum_inplace(expanded[i], gal_keys, degree, degree, context); // This is to make future work less, and slowing by less than double for now.
+        innerSum_inplace(expanded[i], gal_keys, degree, 306, context); // 580 bytes, and each slot 2 bytes, so totally 306 slots. Can get up to 1KB
     }
     NTL_EXEC_RANGE_END;
 }

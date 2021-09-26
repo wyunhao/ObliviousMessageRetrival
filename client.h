@@ -24,8 +24,49 @@ void decodeIndices(map<int, int>& pertinentIndices, const Ciphertext& indexPack,
     }
 }
 
+void decodeIndicesRandom(map<int, int>& pertinentIndices, const vector<vector<Ciphertext>>& indexPack, const vector<Ciphertext>& indexCounter,
+                                     const size_t& degree, const SecretKey& secret_key, const SEALContext& context){
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+
+    int counter = 0;
+    int realNumOfPertinentMsg = 0;
+    vector<uint64_t> countertemp(degree);
+    Plaintext plain_result;
+    decryptor.decrypt(indexCounter[0], plain_result);
+    batch_encoder.decode(plain_result, countertemp);
+    for(size_t i = 0; i < degree; i++){
+        realNumOfPertinentMsg += countertemp[i];
+    }
+
+    for(size_t i = 0; i < indexCounter.size(); i++){
+        vector<uint64_t> plain_counter(degree), plain_one(degree), plain_two(degree);
+        decryptor.decrypt(indexCounter[i], plain_result);
+        batch_encoder.decode(plain_result, plain_counter);
+        decryptor.decrypt(indexPack[i][0], plain_result);
+        batch_encoder.decode(plain_result, plain_one);
+        decryptor.decrypt(indexPack[i][1], plain_result);
+        batch_encoder.decode(plain_result, plain_two);
+        for(size_t j = 0; j < degree; j++){
+            if(plain_counter[j] == 1){
+                uint64_t index = plain_one[j]*65537 + plain_two[j];
+                if(pertinentIndices.find(index) == pertinentIndices.end()){
+                    pertinentIndices.insert(pair<int, int>(index, counter++));
+                }
+            }
+        }
+        if(counter == realNumOfPertinentMsg)
+            break;
+    }
+    if(counter != realNumOfPertinentMsg)
+    {
+        cerr << "Overflow" << endl;
+        exit(1);
+    }
+}
+
 void formRhs(vector<vector<int>>& rhs, const Ciphertext& packedPayloads, const SecretKey& secret_key, const size_t& degree, const SEALContext& context,
-                         const int num_of_buckets = 64, const int payloadSlots = 512){ // or 290
+                         const int num_of_buckets = 64, const int payloadSlots = 306){ // or 306
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
     vector<uint64_t> rhsint(degree);
@@ -57,6 +98,25 @@ void formLhs(vector<vector<int>>& lhs, map<int, int>& pertinentIndices, const ve
         auto ptr = &bipartite_map[itr->first];
         for(size_t j = 0; j < ptr->size(); j++){
             lhs[(*ptr)[j]][itr->second] = j + 1; // j can be replaced. need to reimplement
+        }
+
+    }
+}
+
+void formLhsWeights(vector<vector<int>>& lhs, map<int, int>& pertinentIndices, const vector<vector<int>>& bipartite_map, vector<vector<int>>& weights,
+                            const int start = 0, const int num_of_buckets = 64){ // the last two parameters are for more buckets
+    cout << "weights! " << endl;
+    auto pertinentTransactionNum = pertinentIndices.size();
+    lhs.resize(num_of_buckets);
+    for(int i = 0; i < num_of_buckets; i++){
+        lhs[i].resize(pertinentTransactionNum);
+    }
+
+    map<int, int>::iterator itr;
+    for(itr = pertinentIndices.begin(); itr != pertinentIndices.end(); ++itr){
+        auto ptr = &bipartite_map[itr->first];
+        for(size_t j = 0; j < ptr->size(); j++){
+            lhs[(*ptr)[j]][itr->second] = weights[itr->first][j]; // j can be replaced. need to reimplement
         }
 
     }
@@ -142,7 +202,7 @@ vector<long> singleSolve(const long& a, const vector<int>& toSolve, long mod = 6
     return res;
 }
 
-vector<vector<long>> equationSolving(vector<vector<int>>& lhs, vector<vector<int>>& rhs, const int& numToSolve = 290){
+vector<vector<long>> equationSolving(vector<vector<int>>& lhs, vector<vector<int>>& rhs, const int& numToSolve = 306){
     vector<int> recoder(lhs[0].size(), -1);
     size_t counter = 0;
     int rcd = 0;

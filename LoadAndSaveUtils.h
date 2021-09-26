@@ -7,7 +7,7 @@
 
 using namespace std;
 
-void createDatabase(int num_of_transactions = 524288, int payloadSize = 290){
+void createDatabase(int num_of_transactions = 524288, int payloadSize = 306){
     for(int i = 0; i < num_of_transactions; i++){
         ofstream datafile;
         datafile.open ("../data/payloads/"+to_string(i)+".txt");
@@ -18,7 +18,7 @@ void createDatabase(int num_of_transactions = 524288, int payloadSize = 290){
     }
 }
 
-vector<vector<uint64_t>> loadData(int num_of_transactions = 524288, int payloadSize = 290){
+vector<vector<uint64_t>> loadData(int num_of_transactions = 524288, int payloadSize = 306){
     vector<vector<uint64_t>> ret(num_of_transactions);
     for(int i = 0; i < num_of_transactions; i++){
         ret[i].resize(payloadSize);
