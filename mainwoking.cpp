@@ -41,7 +41,6 @@ vector<vector<uint64_t>> preparinngTransactions(vector<PVWCiphertext>& SICPVW, v
     return ret;
 }
 
-
 Ciphertext serverOperations1Previous(SecretKey& sk, vector<PVWCiphertext>& SICPVW, vector<vector<Ciphertext>>& switchingKey, const RelinKeys& relin_keys,
                             const size_t& degree, const SEALContext& context, const PVWParam& params, const int numOfTransactions){
 
@@ -75,8 +74,8 @@ Ciphertext serverOperations1Previous(SecretKey& sk, vector<PVWCiphertext>& SICPV
     return packedSIC[0];
 }
 
-Ciphertext serverOperations1obtainPackedSIC(SecretKey& sk, vector<PVWCiphertext>& SICPVW, vector<Ciphertext>& switchingKey, const RelinKeys& relin_keys,
-                            const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params, const int numOfTransactions){
+Ciphertext serverOperations1obtainPackedSIC(SecretKey& sk, vector<PVWCiphertext>& SICPVW, vector<vector<Ciphertext>>& switchingKey, const RelinKeys& relin_keys,
+                            const size_t& degree, const SEALContext& context, const PVWParam& params, const int numOfTransactions){
 
     Decryptor decryptor(context, sk);
     Evaluator evaluator(context);
@@ -87,7 +86,7 @@ Ciphertext serverOperations1obtainPackedSIC(SecretKey& sk, vector<PVWCiphertext>
 
     time_start = chrono::high_resolution_clock::now();
     vector<Ciphertext> packedSIC;
-    computeBplusASPVWOptimized(packedSIC, SICPVW, switchingKey,gal_keys, context, params);
+    computeBplusASPVW(packedSIC, SICPVW, switchingKey, context, params);
     switchingKey.clear();
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
@@ -225,6 +224,7 @@ void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext
 
     Decryptor decryptor(context, sk);
     Evaluator evaluator(context);
+    NTL::SetNumThreads(8);
 
     chrono::high_resolution_clock::time_point time_start, time_end;
     chrono::microseconds time_diff;
@@ -568,13 +568,13 @@ void compressedDetectKeySize(){
 
 void OMR2(){
 
-    int numOfTransactions = 32768;
+    int numOfTransactions = 256;
     createDatabase(numOfTransactions, 306); // one time
     cout << "Finishing createDatabase\n";
 
     // step 1. generate PVW sk TODO: change to PK
     // receiver side
-    auto params = PVWParam(450, 65537, 1.2, 8100, 4); 
+    auto params = PVWParam(100, 65537, 1.2, 8100, 4); 
     auto sk = PVWGenerateSecretKey(params);
     cout << "Finishing generating sk for PVW cts\n";
 
@@ -582,7 +582,7 @@ void OMR2(){
     // general
     vector<PVWCiphertext> SICPVW;
     vector<vector<uint64_t>> payload;
-    auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, 650, params);
+    auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, 20, params);
     cout << expected.size() << " pertinent msg: Finishing preparing transactions\n";
 
 
@@ -594,10 +594,10 @@ void OMR2(){
     EncryptionParameters parms(scheme_type::bfv);
     size_t poly_modulus_degree = 32768;
     parms.set_poly_modulus_degree(poly_modulus_degree);
-    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 27, \
-                                                                            21, 26, 31, 32, 31, 31, 31, 31, 31, 31, 31, \
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 26, \
+                                                                            21, 25, 31, 32, 31, 31, 31, 31, 31, 31, 31, \
                                                                             31, 31, 32, 31, 31, 31, 31, 31, 31, 31, 31,\
-                                                                            31, 20, 32 }));
+                                                                            21, 20, 32 }));
     parms.set_plain_modulus(65537);
 
 	prng_seed_type seed;
@@ -657,8 +657,8 @@ void OMR2(){
     cout << " End of chain reached" << endl << endl;
     // end context data
 
-    vector<Ciphertext> switchingKey;
-    genSwitchingKeyPVWPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, sk, params);
+    vector<vector<Ciphertext>> switchingKey;
+    genSwitchingKeyPVW(switchingKey, context, poly_modulus_degree, public_key, sk, params);
     cout << 1 << endl;
 
     // vector<Ciphertext> vec;
@@ -689,13 +689,9 @@ void OMR2(){
 
     cout << 3 << endl;
 
-	GaloisKeys gal_keys;
-    vector<int> stepsfirst = {1};
-    keygen.create_galois_keys(stepsfirst, gal_keys);
+    auto packedSIC = serverOperations1obtainPackedSIC(secret_key, SICPVW, switchingKey, relin_keys, poly_modulus_degree, context, params, numOfTransactions);
 
-    auto packedSIC = serverOperations1obtainPackedSIC(secret_key, SICPVW, switchingKey, relin_keys,gal_keys, poly_modulus_degree, context, params, numOfTransactions);
-
-    //GaloisKeys gal_keys;
+    GaloisKeys gal_keys;
     vector<int> steps = {0};
     for(int i = 1; i < int(poly_modulus_degree/2); i *= 2){
 	    steps.push_back(i);
@@ -728,7 +724,7 @@ void OMR2(){
 
 void OMR3(){
 
-    int numOfTransactions = 32768;
+    int numOfTransactions = 128;
     createDatabase(numOfTransactions, 306); // one time
     cout << "Finishing createDatabase\n";
 
@@ -754,11 +750,10 @@ void OMR3(){
     EncryptionParameters parms(scheme_type::bfv);
     size_t poly_modulus_degree = 32768;
     parms.set_poly_modulus_degree(poly_modulus_degree);
-	parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 27, 
-                                                                            21, 26, 31, 
-                                                                            32, 31, 31, 31, 31, 31, 31, 31, 
-                                                                            31, 31, 32, 31, 31, 31, 31, 31, 31, 31, 31,
-                                                                            31, 20, 32 }));
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 26, \
+                                                                            21, 25, 31, 32, 31, 31, 31, 31, 31, 31, 31, \
+                                                                            31, 31, 32, 31, 31, 31, 31, 31, 31, 31, 31,\
+                                                                            21, 20, 32 }));
     parms.set_plain_modulus(65537);
 
 	prng_seed_type seed;
@@ -782,19 +777,14 @@ void OMR3(){
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> switchingKey;
-    genSwitchingKeyPVWPacked(switchingKey, context, poly_modulus_degree, public_key,secret_key, sk, params);
+    vector<vector<Ciphertext>> switchingKey;
+    genSwitchingKeyPVW(switchingKey, context, poly_modulus_degree, public_key, sk, params);
 
-	GaloisKeys gal_keys;
-    vector<int> stepsfirst = {1};
-    keygen.create_galois_keys(stepsfirst, gal_keys);
+    auto packedSIC = serverOperations1obtainPackedSIC(secret_key, SICPVW, switchingKey, relin_keys, poly_modulus_degree, context, params, numOfTransactions);
 
-
-    auto packedSIC = serverOperations1obtainPackedSIC(secret_key, SICPVW, switchingKey, relin_keys, gal_keys, poly_modulus_degree, context, params, numOfTransactions);
-    
-	//GaloisKeys gal_keys;
+    GaloisKeys gal_keys;
     vector<int> steps = {0};
-    for(int i = 2; i < int(poly_modulus_degree/2); i *= 2){
+    for(int i = 1; i < int(poly_modulus_degree/2); i *= 2){
 	    steps.push_back(i);
     }
     keygen.create_galois_keys(steps, gal_keys);
@@ -833,10 +823,10 @@ int main(){
     // compressedDetectKeySize();
 
     // 3. To run OMR3
-    OMR3();
+    //OMR3();
 
     // 2. To run OMR2
-    //OMR2();
+    OMR2();
 
     
 }

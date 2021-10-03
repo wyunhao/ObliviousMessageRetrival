@@ -49,13 +49,17 @@ void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Cipher
     //}
 }
 
-void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector<Ciphertext>& indexCounters, const vector<Ciphertext>& SIC, const SEALContext& context, 
+void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector<Ciphertext>& indexCounters, vector<Ciphertext>& SIC, const SEALContext& context, 
                                         const PublicKey& BFVpk, size_t& counter, const size_t& degree, size_t C){ // counter is used to optimize memory use, not needed for now
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
     Encryptor encryptor(context, BFVpk);
     vector<uint64_t> pod_matrix(degree, 0ULL); // TODOmulti: move inside to the loop for multi-threading
     srand(time(NULL));
+
+    // for(size_t i = 0; i < SIC.size(); i++){
+    //     evaluator.mod_switch_to_next_inplace(SIC[i]);
+    // }
 
     if(counter == 0){ // first msg
         indexIndicator.resize(C);
@@ -68,11 +72,15 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
             evaluator.mod_switch_to_inplace(indexIndicator[i][0], SIC[0].parms_id());
             evaluator.mod_switch_to_inplace(indexIndicator[i][1], SIC[0].parms_id());
             evaluator.mod_switch_to_inplace(indexCounters[i], SIC[0].parms_id());
+            evaluator.transform_to_ntt_inplace(indexIndicator[i][0]);
+            evaluator.transform_to_ntt_inplace(indexIndicator[i][1]);
+            evaluator.transform_to_ntt_inplace(indexCounters[i]);
         }
     }
 
     for(size_t i = 0; i < SIC.size(); i++){
         // cout << "hey!" << endl;
+        evaluator.transform_to_ntt_inplace(SIC[i]);
         for(size_t j = 0; j < C; j++){
             // cout <<"here iteration: " << i << " " << j << ": ";
             size_t index = rand()%degree;
@@ -80,14 +88,16 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
 
             vector<uint64_t> pod_matrix(degree, 0ULL);
             Ciphertext temp;
-            Plaintext plain_matrix;
 
             pod_matrix[index] = counter/65537;
             if(pod_matrix[index] == 0){
                 // then nothing to do
             } else {
+                Plaintext plain_matrix;
                 batch_encoder.encode(pod_matrix, plain_matrix);
+                evaluator.transform_to_ntt_inplace(plain_matrix, SIC[i].parms_id());
                 evaluator.multiply_plain(SIC[i], plain_matrix, temp);
+                // evaluator.transform_from_ntt_inplace(temp);
                 evaluator.add_inplace(indexIndicator[j][0], temp);
             }
 
@@ -97,8 +107,11 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
             if(pod_matrix[index] == 0){
                 // then nothing to do
             } else {
+                Plaintext plain_matrix;
                 batch_encoder.encode(pod_matrix, plain_matrix);
+                evaluator.transform_to_ntt_inplace(plain_matrix, SIC[i].parms_id());
                 evaluator.multiply_plain(SIC[i], plain_matrix, temp);
+                // evaluator.transform_from_ntt_inplace(temp);
                 evaluator.add_inplace(indexIndicator[j][1], temp);
             }
 
@@ -108,10 +121,14 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
             if(pod_matrix[index] == 0){
                 // then nothing to do
             } else {
+                Plaintext plain_matrix;
                 batch_encoder.encode(pod_matrix, plain_matrix);
+                evaluator.transform_to_ntt_inplace(plain_matrix, SIC[i].parms_id());
                 evaluator.multiply_plain(SIC[i], plain_matrix, temp);
+                // evaluator.transform_from_ntt_inplace(temp);
                 evaluator.add_inplace(indexCounters[j], temp);
             }
+            // evaluator.transform_from_ntt_inplace(SIC[i]);
         }
         counter += 1;
     }

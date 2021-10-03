@@ -8,6 +8,100 @@
 using namespace seal;
 
 // take PVW sk's and output switching key, which is a ciphertext of size \ell*n, where n is the PVW ciphertext dimension
+void genSwitchingKeyPVWPacked(vector<Ciphertext>& switchingKey, const SEALContext& context, const size_t& degree,\
+                         const PublicKey& BFVpk, const SecretKey& BFVsk, const PVWsk& regSk, const PVWParam& params){ // TODOmulti: can be multithreaded easily
+    BatchEncoder batch_encoder(context);
+    Encryptor encryptor(context, BFVpk);
+	encryptor.set_secret_key(BFVsk);
+    switchingKey.resize(params.ell);
+
+    int tempn = 1;
+    for(tempn = 1; tempn < params.n; tempn *= 2){}
+    for(int j = 0; j < params.ell; j++){
+        vector<uint64_t> skInt(degree);
+        for(size_t i = 0; i < degree; i++){
+            // cout << i << endl;
+            auto tempindex = i%uint64_t(tempn);
+            if(int(tempindex) >= params.n)
+            {
+                skInt[i] = 0;
+            } else {
+                skInt[i] = uint64_t(regSk[j][tempindex].ConvertToInt() % 65537);
+            }
+        }
+        // for(int i = 0; i < 120; i++)
+        //     cout << skInt[i] <<' ';
+        // cout << endl << endl;
+        Plaintext plaintext;
+        batch_encoder.encode(skInt, plaintext);
+        encryptor.encrypt_symmetric(plaintext, switchingKey[j]);
+    }
+}
+
+// compute b - as using smaller key
+void computeBplusASPVWOptimized(vector<Ciphertext>& output, \
+        const vector<PVWCiphertext>& toPack, vector<Ciphertext>& switchingKey, const GaloisKeys& gal_keys,
+        const SEALContext& context, const PVWParam& param){ // TODOmulti: can be multithreaded, not that easily, but doable
+
+    int tempn;
+    for(tempn = 1; tempn < param.n; tempn*=2){}
+
+    Evaluator evaluator(context);
+    BatchEncoder batch_encoder(context);
+    size_t slot_count = batch_encoder.slot_count();
+    if(toPack.size() > slot_count){
+        cerr << "Please pack at most " << slot_count << " PVW ciphertexts at one time." << endl;
+        return;
+    }
+    output.resize(param.ell);
+
+    for(int i = 0; i < tempn; i++){
+        vector<uint64_t> vectorOfInts(toPack.size());
+        for(size_t j = 0; j < toPack.size(); j++){
+            int the_index = (i+int(j))%tempn;
+            if(the_index >= param.n)
+            {
+                vectorOfInts[j] = 0;
+            } else {
+                vectorOfInts[j] = uint64_t((toPack[j].a[the_index].ConvertToInt()));
+            }
+        }
+        // if(i<10){
+        //     for(int k = 0; k < 120; k++)
+        //     cout << vectorOfInts[k] <<' ';
+        // cout << endl<<endl;
+        // }
+        Plaintext plaintext;
+        batch_encoder.encode(vectorOfInts, plaintext);
+        
+        for(int j = 0; j < param.ell; j++){
+            if(i == 0){
+                evaluator.multiply_plain(switchingKey[j], plaintext, output[j]); // times s[i]
+            }
+            else{
+                Ciphertext temp;
+                evaluator.multiply_plain(switchingKey[j], plaintext, temp);
+                evaluator.add_inplace(output[j], temp);
+            }
+            evaluator.rotate_rows_inplace(switchingKey[j], 1, gal_keys);
+        }
+    }
+
+    for(int i = 0; i < param.ell; i++){
+        vector<uint64_t> vectorOfInts(toPack.size());
+        for(size_t j = 0; j < toPack.size(); j++){
+            vectorOfInts[j] = uint64_t((toPack[j].b[i].ConvertToInt() - 16384) % 65537); // b - sum(s[i]a[i])
+        }
+        Plaintext plaintext;
+
+        batch_encoder.encode(vectorOfInts, plaintext);
+        evaluator.negate_inplace(output[i]);
+        evaluator.add_plain_inplace(output[i], plaintext);
+        evaluator.mod_switch_to_next_inplace(output[i]); //XXX
+    }
+}
+
+// take PVW sk's and output switching key, which is a ciphertext of size \ell*n, where n is the PVW ciphertext dimension
 void genSwitchingKeyPVW(vector<vector<Ciphertext>>& switchingKey, const SEALContext& context, const size_t& degree,\
                          const PublicKey& BFVpk, const PVWsk& regSk, const PVWParam& params){ // TODOmulti: can be multithreaded easily
     BatchEncoder batch_encoder(context);
@@ -75,6 +169,7 @@ void computeBplusASPVW(vector<Ciphertext>& output, \
         batch_encoder.encode(vectorOfInts, plaintext);
         evaluator.negate_inplace(output[i]);
         evaluator.add_plain_inplace(output[i], plaintext);
+        evaluator.mod_switch_to_next_inplace(output[i]); //XXX
     }
 }
 
@@ -242,12 +337,30 @@ void lessThan_PatersonStockmeyer(Ciphertext& ciphertext, const Ciphertext& input
     vector<Ciphertext> kToMCTs;
     calUptoDegreeK(kToMCTs, kCTs[kCTs.size()-1], 256, relin_keys, context);
     
+    cout << "2.1: ";
+    for(size_t i = 0; i < kCTs[0].parms_id().size(); i++){
+        cout << " " << kCTs[0].parms_id()[i];
+    }
+    cout  << endl;
+    cout << "2.2: ";
+    for(size_t i = 0; i < kToMCTs[0].parms_id().size(); i++){
+        cout << " " << kToMCTs[0].parms_id()[i];
+    }
+    cout  << endl;
+    // cout << "2.2: " << kToMCTs[0].parms_id() << endl;
+    
     for(size_t j = 0; j < kCTs.size(); j++){ // match to one level left, the one level left is for plaintext multiplication noise
-        for(int i = 0; i < 8; i++){
+        for(int i = 0; i < 7; i++){
             evaluator.mod_switch_to_next_inplace(kCTs[j]);
         }
-        evaluator.mod_switch_to_next_inplace(kToMCTs[j]);
+        // evaluator.mod_switch_to_next_inplace(kToMCTs[j]);
     }
+    cout << "2.3: ";
+    for(size_t i = 0; i < kCTs[0].parms_id().size(); i++){
+        cout << " " << kCTs[0].parms_id()[i];
+    }
+    cout  << endl;
+    // cout << "2.3: " << kCTs[0].parms_id() << endl;
 
     for(int i = 0; i < 256; i++){
         // cout << i << ": ";
@@ -286,6 +399,12 @@ void lessThan_PatersonStockmeyer(Ciphertext& ciphertext, const Ciphertext& input
             evaluator.add_inplace(ciphertext, levelSum);
         }
     }
+    cout << "2.4: ";
+    for(size_t i = 0; i < ciphertext.parms_id().size(); i++){
+        cout << " " << ciphertext.parms_id()[i];
+    }
+    cout  << endl;
+    // cout << "2.4: " << ciphertext.parms_id() << endl;
 
     vector<uint64_t> intInd(degree, 32769); // (p+1)/2
     Plaintext plainInd;
@@ -294,6 +413,12 @@ void lessThan_PatersonStockmeyer(Ciphertext& ciphertext, const Ciphertext& input
     evaluator.multiply_plain(kToMCTs[255], plainInd, tmep);
     evaluator.mod_switch_to_next_inplace(tmep);
     evaluator.add_inplace(ciphertext, tmep);
+    cout << "2.5: ";
+    for(size_t i = 0; i < ciphertext.parms_id().size(); i++){
+        cout << " " << ciphertext.parms_id()[i];
+    }
+    cout  << endl;
+    // cout << "2.5: " << ciphertext.parms_id() << endl;
 }
 
 // check in range
