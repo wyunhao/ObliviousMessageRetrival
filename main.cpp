@@ -85,7 +85,7 @@ Ciphertext serverOperations1Previous(SecretKey& sk, vector<PVWCiphertext>& SICPV
     return packedSIC[0];
 }
 
-Ciphertext serverOperations1obtainPackedSIC(SecretKey& sk, vector<PVWCiphertext>& SICPVW, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
+Ciphertext serverOperations1obtainPackedSIC(const SecretKey& sk, vector<PVWCiphertext>& SICPVW, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
                             const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params, const int numOfTransactions){
     Decryptor decryptor(context, sk);
     Evaluator evaluator(context);
@@ -117,7 +117,7 @@ Ciphertext serverOperations1obtainPackedSIC(SecretKey& sk, vector<PVWCiphertext>
     cout << "3: " << packedSIC[0].parms_id() << endl;
 
     cout << decryptor.invariant_noise_budget(packedSIC[0]) << " bits left" << endl;
-    // for(int i = 0; i < 1; i++)
+    // for(int i = 0; i < num_batches; i++)
         // evaluator.mod_switch_to_next_inplace(packedSIC[0]);
     //evaluator.mod_switch_to_next_inplace(packedSIC);
     cout << decryptor.invariant_noise_budget(packedSIC[0]) << " bits left" << endl;
@@ -874,10 +874,6 @@ void OMR2multi(){
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    int batchcounter = 0;
-    while(counter < 16/numcores){
-        MemoryPoolHandle my_pool = MemoryPoolHandle::New();
-        auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
 
     vector<Ciphertext> switchingKey;
     Ciphertext packedSIC;
@@ -901,15 +897,23 @@ void OMR2multi(){
     vector<Ciphertext> temps(numcores);
 
     NTL::SetNumThreads(numcores);
+    int batchcounter = 0;
+    while(batchcounter < num_batches){
+    batchcounter++;
+    cout << "Phase 2-3, batch " << batchcounter << " for 4 cores" << endl;
+    MemoryPoolHandle my_pool = MemoryPoolHandle::New();
+    auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
     NTL_EXEC_RANGE(numcores, first, last);
     for(int i = first; i < last; i++){
-        std::chrono::seconds dura(15*i);
-        std::this_thread::sleep_for( dura );
+        // std::chrono::seconds dura(15*i);
+        // std::this_thread::sleep_for( dura );
         cout << "!!! " << i << endl;
         temps[i] = serverOperations1obtainPackedSIC(secret_key, SICPVW_multicore[i], switchingKey, relin_keys, gal_keys,
                                                         poly_modulus_degree, context, params, numOfTransactions/numcores);
     }
     NTL_EXEC_RANGE_END;
+    MemoryManager::SwitchProfile(std::move(old_prof));
+    }
     
     // MemoryManager::SwitchProfile(std::move(old_prof));
     
@@ -929,14 +933,22 @@ void OMR2multi(){
     vector<vector<vector<int>>> bipartite_map(numcores);
     vector<size_t> counter(numcores);
 
+    batchcounter = 0;
+    while(batchcounter < num_batches){
+    batchcounter++;
+    cout << "Phase 2-3, batch " << batchcounter << " for 4 cores" << endl;
     NTL_EXEC_RANGE(numcores, first, last);
     for(int i = first; i < last; i++){
+        MemoryPoolHandle my_pool = MemoryPoolHandle::New();
+        auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
         //evaluator.encrypt_zero(rhs);
         serverOperations2therest(lhs_multi[i], bipartite_map[i], rhs_multi[i], secret_key,
                             temps[i], payload_multicore[i], relin_keys, gal_keys,
                             poly_modulus_degree, context, params, numOfTransactions/numcores, counter[i]);
+        MemoryManager::SwitchProfile(std::move(old_prof));
     }
     NTL_EXEC_RANGE_END;
+    }
 
     // step 5. receiver decoding
     auto res = receiverDecoding(lhs_multi[0], bipartite_map[0], rhs_multi[0],
@@ -950,8 +962,7 @@ void OMR2multi(){
     for(size_t i = 0; i < res.size(); i++){
 
     }
-    MemoryManager::SwitchProfile(std::move(old_prof));
-    }
+    
 }
 
 int main(){

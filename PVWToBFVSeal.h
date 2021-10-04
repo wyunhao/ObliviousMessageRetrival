@@ -455,8 +455,8 @@ void lessThan_PatersonStockmeyer(Ciphertext& ciphertext, const Ciphertext& input
         MemoryManager::SwitchProfile(std::move(old_prof));
     }
     vector<Ciphertext> kToMCTs(256);
-    std::chrono::seconds dura(90);
-    std::this_thread::sleep_for( dura );
+    // std::chrono::seconds dura(90);
+    // std::this_thread::sleep_for( dura );
     calUptoDegreeK(kToMCTs, kCTs[kCTs.size()-1], 256, relin_keys, context);
     
     cout << "2.1: ";
