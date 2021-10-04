@@ -1195,7 +1195,7 @@ void degreeUpToTest(){
     parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 35, \
                                                                             30, 30, 30, 30, 30, 30, 30, 30, 30, 30, \
                                                                             30, 30, 30, 30, 30, 30, 30, 30, 30, 30,\
-                                                                            30, 30, 30, 30, 30, 35 }));
+                                                                            30, 30, 30, 30, 20, 30 }));
 
     parms.set_plain_modulus(65537);
 
@@ -1243,16 +1243,21 @@ void degreeUpToTest(){
     time_start = chrono::high_resolution_clock::now();
 
     vector<Ciphertext> output, output2;
-    calUptoDegreeK(output, encrypted_matrix, 256, relin_keys, context);
-    calUptoDegreeK(output2, output[output.size()-1], 256, relin_keys, context);
+    cout << "    + Noise budget in result: " << decryptor.invariant_noise_budget(encrypted_matrix) << " bits" << endl;
+    // evaluator.mod_switch_to_next_inplace(encrypted_matrix);
+    // evaluator.mod_switch_to_next_inplace(encrypted_matrix);
+    // cout << "    + Noise budget in result: " << decryptor.invariant_noise_budget(encrypted_matrix) << " bits" << endl;
+
+    calUptoDegreeK(output, encrypted_matrix, 64, relin_keys, context);
+    // calUptoDegreeK(output2, output[output.size()-1], 256, relin_keys, context);
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << "Done [" << time_diff.count() << " microseconds]" << endl;
     cout << output.size() << endl;
-    cout << output2.size() << endl;
+    // cout << output2.size() << endl;
 
-    for(size_t i = 0; i < 10; i++){
+    for(size_t i = 0; i < 64; i++){
         Plaintext plain_result;
         print_line(__LINE__);
         cout << "Decrypt and decode result." << endl;
@@ -1266,20 +1271,20 @@ void degreeUpToTest(){
         }
         cout << endl;
     }
-    for(size_t i = 250; i < 256; i++){
-        Plaintext plain_result;
-        print_line(__LINE__);
-        cout << "Decrypt and decode result." << endl;
-        decryptor.decrypt(output2[i], plain_result);
-        batch_encoder.decode(plain_result, pod_matrix);
-        cout << "    + Result plaintext matrix ...... Correct." << endl;
-        cout << "    + Noise budget in result: " << decryptor.invariant_noise_budget(output2[i]) << " bits" << endl;
-        // print_matrix(pod_matrix, row_size);
-        for(int j = 0; j < 10; j++){
-            cout << pod_matrix[j] << " ";
-        }
-        cout << endl;
-    }
+    // for(size_t i = 250; i < 256; i++){
+    //     Plaintext plain_result;
+    //     print_line(__LINE__);
+    //     cout << "Decrypt and decode result." << endl;
+    //     decryptor.decrypt(output2[i], plain_result);
+    //     batch_encoder.decode(plain_result, pod_matrix);
+    //     cout << "    + Result plaintext matrix ...... Correct." << endl;
+    //     cout << "    + Noise budget in result: " << decryptor.invariant_noise_budget(output2[i]) << " bits" << endl;
+    //     // print_matrix(pod_matrix, row_size);
+    //     for(int j = 0; j < 10; j++){
+    //         cout << pod_matrix[j] << " ";
+    //     }
+    //     cout << endl;
+    // }
 }
 
 void testCalIndices(){
