@@ -1,3 +1,9 @@
+# For swapping memory
+
+```
+sudo sh -c 'fallocate -l 14G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && swapon --show && free -h'
+```
+
 # Whole script needed. Just as notes
 ```
 git clone https://gitlab.com/palisade/palisade-development
