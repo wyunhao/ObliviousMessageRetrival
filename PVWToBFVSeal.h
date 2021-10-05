@@ -265,6 +265,7 @@ void calUptoDegreeK(vector<Ciphertext>& output, const Ciphertext& input, const i
     output[0] = input;
     calculated[0] = 1; // degree 1, x
     Ciphertext res, base;
+    vector<int> numMod(DegreeK, 0);
 
     for(int i = DegreeK; i > 0; i--){
         if(calculated[i-1] == 0){
@@ -282,10 +283,15 @@ void calUptoDegreeK(vector<Ciphertext>& output, const Ciphertext& input, const i
                         if(resdeg == basedeg){
                             res = base; // should've never be used as base should have made calculated[basedeg-1]
                         } else {
+                            numMod[resdeg-1] = numMod[basedeg-1];
+
                             evaluator.mod_switch_to_inplace(res, base.parms_id()); // match modulus
                             evaluator.multiply_inplace(res, base);
                             evaluator.relinearize_inplace(res, relin_keys);
-                            evaluator.mod_switch_to_next_inplace(res);
+                            while(numMod[resdeg-1] < (ceil(log2(resdeg))/2)){
+                                evaluator.mod_switch_to_next_inplace(res);
+                                numMod[resdeg-1]+=1;
+                            }
                         }
                         output[resdeg-1] = res;
                         calculated[resdeg-1] += 1;
@@ -296,9 +302,13 @@ void calUptoDegreeK(vector<Ciphertext>& output, const Ciphertext& input, const i
                     if(calculated[basedeg-1] != 0){
                         base = output[basedeg - 1];
                     } else {
+                        numMod[basedeg-1] = numMod[basedeg/2-1];
                         evaluator.square_inplace(base);
                         evaluator.relinearize_inplace(base, relin_keys);
-                        evaluator.mod_switch_to_next_inplace(base);
+                        while(numMod[basedeg-1] < (ceil(log2(basedeg))/2)){
+                                evaluator.mod_switch_to_next_inplace(base);
+                                numMod[basedeg-1]+=1;
+                            }
                         output[basedeg-1] = base;
                         calculated[basedeg-1] += 1;
                     }
@@ -408,7 +418,7 @@ void lessThan_PatersonStockmeyer(Ciphertext& ciphertext, const Ciphertext& input
                         calUptoDegreeK(temp, input, 256, relin_keys, context);
                         cout << temp.size() << "---" << endl;
                         for(size_t j = 0; j < temp.size()-1; j++){ // match to one level left, the one level left is for plaintext multiplication noise
-                            for(int i = 0; i < 7; i++){
+                            for(int i = 0; i < 3; i++){
                                 evaluator.mod_switch_to_next_inplace(temp[j]);
                             }
                         }
@@ -506,12 +516,12 @@ void lessThan_PatersonStockmeyer(Ciphertext& ciphertext, const Ciphertext& input
         }
         evaluator.mod_switch_to_inplace(levelSum, kToMCTs[i].parms_id()); // mod down the plaintext multiplication noise
         if(i == 0){
-            evaluator.mod_switch_to_next_inplace(levelSum);
+            // evaluator.mod_switch_to_next_inplace(levelSum);
             ciphertext = levelSum;
         } else {
             evaluator.multiply_inplace(levelSum, kToMCTs[i - 1]);
             evaluator.relinearize_inplace(levelSum, relin_keys);
-            evaluator.mod_switch_to_next_inplace(levelSum);
+            // evaluator.mod_switch_to_next_inplace(levelSum);
             evaluator.add_inplace(ciphertext, levelSum);
         }
     }
@@ -527,7 +537,7 @@ void lessThan_PatersonStockmeyer(Ciphertext& ciphertext, const Ciphertext& input
     Ciphertext tmep;
     batch_encoder.encode(intInd, plainInd);
     evaluator.multiply_plain(kToMCTs[255], plainInd, tmep);
-    evaluator.mod_switch_to_next_inplace(tmep);
+    // evaluator.mod_switch_to_next_inplace(tmep);
     evaluator.add_inplace(ciphertext, tmep);
     cout << "2.5: ";
     for(size_t i = 0; i < ciphertext.parms_id().size(); i++){

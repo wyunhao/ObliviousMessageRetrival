@@ -222,6 +222,7 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
     cout << time_diff.count() << " " << "7\n";
 
     while(context.last_parms_id() != rhs.parms_id()){
+        cout << "!" << endl;
         evaluator.mod_switch_to_next_inplace(rhs);
         evaluator.mod_switch_to_next_inplace(lhs);
     }
@@ -230,6 +231,8 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
     //    evaluator.mod_switch_to_next_inplace(lhs);
     //}
     cout << rhs.parms_id() << endl;
+    cout << decryptor.invariant_noise_budget(rhs) << " bits left" << endl;
+    cout << decryptor.invariant_noise_budget(lhs) << " bits left" << endl;
 
     stringstream data_stream, data_stream2;
     cout << rhs.save(data_stream) << " bytes" << endl;
@@ -530,11 +533,10 @@ void compressedDetectKeySize(){
     EncryptionParameters parms(scheme_type::bfv);
     size_t poly_modulus_degree = 32768;
     parms.set_poly_modulus_degree(poly_modulus_degree);
-    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 27, 
-                                                                            21, 26, 31, 
-                                                                            32, 31, 31, 31, 31, 31, 31, 31, 
-                                                                            31, 31, 32, 31, 31, 31, 31, 31, 31, 31, 31,
-                                                                            31, 20, 32 }));
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 27, \
+                                                                            22, 42, 60, 60, 60, 60, \
+                                                                            60, 60, 60, 60, 60, 60,\
+                                                                            32, 20, 30 }));
     parms.set_plain_modulus(65537);
 
 
@@ -819,7 +821,7 @@ void OMR3(){
 
 void OMR2multi(){
 
-    int numcores = 4;
+    // int numcores = 4;
 
     int numOfTransactions = 256*numcores;
     createDatabase(numOfTransactions, 306); // one time
@@ -848,9 +850,9 @@ void OMR2multi(){
     size_t poly_modulus_degree = 32768;
     parms.set_poly_modulus_degree(poly_modulus_degree);
     parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 27, \
-                                                                            22, 23, 31, 32, 31, 31, 31, 31, 31, 31, 31, \
-                                                                            31, 31, 32, 31, 31, 31, 31, 31, 31, 31, 31,\
-                                                                            32, 20, 30 }));
+                                                                            22, 42, 60, 60, 60, 60, \
+                                                                            60, 60, 60, 60, 60, 60,\
+                                                                            32, 20, 60 }));
     parms.set_plain_modulus(65537);
 
 	prng_seed_type seed;
@@ -966,10 +968,14 @@ void OMR2multi(){
 }
 
 int main(){
+    // speedTest(4);
+    // speedTest(2);
+    // speedTest(1);
+    // return 0;
     // degreeUpToTest();
 
     // 1. To check compressed detection size
-    // compressedDetectKeySize();
+    compressedDetectKeySize();
 
     // 3. To run OMR3
     // OMR3();

@@ -1383,3 +1383,22 @@ void LTtest(){
     cout << endl;
     
 }
+
+void speedTest(int numcores = 4){
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    chrono::microseconds time_diff;
+    int totalNum = 1<<30;
+    vector<int> total(totalNum, 2);
+    NTL::SetNumThreads(numcores);
+    time_start = chrono::high_resolution_clock::now();
+    NTL_EXEC_RANGE(totalNum, first, last);
+    for(int i = first; i < last; i++){
+        total[i] *= 65537;
+        total[i] *= 65537;
+        total[i] %= 65535;
+    }
+    NTL_EXEC_RANGE_END;
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << time_diff.count() << " us for " << numcores << " core(s)." << endl;
+}

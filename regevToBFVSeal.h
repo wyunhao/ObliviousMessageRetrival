@@ -12,21 +12,25 @@ using namespace seal;
 inline
 void EvalMultMany_inpace(vector<Ciphertext>& ciphertexts, const RelinKeys &relin_keys, const SEALContext& context){ // TODOmulti: can be multithreaded easily
     Evaluator evaluator(context);
+    int counter = 0;
 
     while(ciphertexts.size() != 1){
+        counter += 1;
         // cout << ciphertexts.size() << endl;
         for(size_t i = 0; i < ciphertexts.size()/2; i++){
             //if(i % 100 == 0)
             //    cout << "hello " << i << endl;
             evaluator.multiply_inplace(ciphertexts[i], ciphertexts[ciphertexts.size()/2+i]);
             evaluator.relinearize_inplace(ciphertexts[i], relin_keys);
-            evaluator.mod_switch_to_next_inplace(ciphertexts[i]);
+            if(counter & 1)
+                evaluator.mod_switch_to_next_inplace(ciphertexts[i]);
         }
         if(ciphertexts.size()%2 == 0)
             ciphertexts.resize(ciphertexts.size()/2);
         else{ // if odd, take the last one and mod down to make them compatible
             ciphertexts[ciphertexts.size()/2] = ciphertexts[ciphertexts.size()-1];
-            evaluator.mod_switch_to_next_inplace(ciphertexts[ciphertexts.size()/2]);
+            if(counter & 1)
+                evaluator.mod_switch_to_next_inplace(ciphertexts[ciphertexts.size()/2]);
             ciphertexts.resize(ciphertexts.size()/2+1);
         }
     }
