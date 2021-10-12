@@ -293,7 +293,7 @@ void innerSum_inplace(Ciphertext& output, const GaloisKeys& gal_keys, const size
 
 // Takes one SIC compressed and expand then into SIC's each encrypt 0/1 in slots up to cover 580 bytes
 void expandSIC(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisKeys& gal_keys,
-                const size_t& degree, const SEALContext& context, const size_t& toExpandNum, const size_t& start = 0){ 
+                const size_t& degree, const SEALContext& context, const SEALContext& context2, const size_t& toExpandNum, const size_t& start = 0){ 
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
     expanded.resize(toExpandNum);
@@ -306,6 +306,7 @@ void expandSIC(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisK
     Plaintext plain_matrix;
     batch_encoder.encode(pod_matrix, plain_matrix);
     for(size_t i = 0; i < toExpandNum; i++){ // TODOmulti: change to do multi-threading.
+        // cout << i << endl;
         // time_start = chrono::high_resolution_clock::now();
 	    if((i+start) != 0){ // if not 0, need to rotate to place 0
             if((i+start) == degree/2){
@@ -316,16 +317,17 @@ void expandSIC(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisK
                 evaluator.rotate_rows_inplace(toExpand, 1, gal_keys);
             }
         }
+        // cout << i << endl;
         evaluator.multiply_plain(toExpand, plain_matrix, expanded[i]);
 	    evaluator.mod_switch_to_next_inplace(expanded[i]);
-	    //evaluator.mod_switch_to_next_inplace(expanded[i]);
+	    evaluator.mod_switch_to_next_inplace(expanded[i]);
 
 	    // time_end = chrono::high_resolution_clock::now();
             // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
             // cout << "expandSIC: " << time_diff.count() << " " << i << "\n";
 
 	    // time_start = chrono::high_resolution_clock::now();
-        innerSum_inplace(expanded[i], gal_keys, degree, degree, context); // This is to make future work less, and slowing by less than double for now.
+        innerSum_inplace(expanded[i], gal_keys_last, degree, degree, context2); // This is to make future work less, and slowing by less than double for now.
         // time_end = chrono::high_resolution_clock::now();
         // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
         // cout << "expandSIC: " << time_diff.count() << " " << i << "\n\n";

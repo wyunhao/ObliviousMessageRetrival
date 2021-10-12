@@ -128,7 +128,7 @@ Ciphertext serverOperations1obtainPackedSIC(const SecretKey& sk, vector<PVWCiphe
 
 void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_map, Ciphertext& rhs, SecretKey& sk, // sk just for test
                         Ciphertext& packedSIC, const vector<vector<uint64_t>>& payload, const RelinKeys& relin_keys, const GaloisKeys& gal_keys,
-                        const size_t& degree, const SEALContext& context, const PVWParam& params, const int numOfTransactions, size_t counter = 0, const int payloadSize = 306){
+                        const size_t& degree, const SEALContext& context, const SEALContext& context2, const PVWParam& params, const int numOfTransactions, size_t counter = 0, const int payloadSize = 306){
 
     Decryptor decryptor(context, sk);
     Evaluator evaluator(context);
@@ -162,7 +162,7 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
             // 3 4 6 7. expand SIC; retrieve indices; retrieve payloads, shift the payload according to the graph; payload paking
             time_start2 = chrono::high_resolution_clock::now();
             vector<Ciphertext> expandedSIC;
-            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, step, i);
+            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, context2, step, i);
             time_end2 = chrono::high_resolution_clock::now();
             time_diff2 = chrono::duration_cast<chrono::microseconds>(time_end2 - time_start2);
             cout << time_diff2.count() << " " << "3\n";
@@ -193,7 +193,7 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
             // 3 4 6 7. expand SIC; retrieve indices; retrieve payloads, shift the payload according to the graph; payload paking
             // time_start = chrono::high_resolution_clock::now();
             vector<Ciphertext> expandedSIC;
-            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, step, i);
+            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, context2, step, i);
             // time_end = chrono::high_resolution_clock::now();
             // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
             // cout << time_diff.count() << " " << "3\n";
@@ -221,10 +221,15 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "7\n";
 
+    Ciphertext newtest = rhs;
+    for(int i = 0; i < 16; i++)
+        evaluator.add_inplace(newtest, rhs);
+
     while(context.last_parms_id() != rhs.parms_id()){
         cout << "!" << endl;
         evaluator.mod_switch_to_next_inplace(rhs);
         evaluator.mod_switch_to_next_inplace(lhs);
+        evaluator.mod_switch_to_next_inplace(newtest);
     }
     //for(int i = 0; i < 2; i++){
     //    evaluator.mod_switch_to_next_inplace(rhs);
@@ -233,6 +238,7 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
     cout << rhs.parms_id() << endl;
     cout << decryptor.invariant_noise_budget(rhs) << " bits left" << endl;
     cout << decryptor.invariant_noise_budget(lhs) << " bits left" << endl;
+    cout << decryptor.invariant_noise_budget(newtest) << " bits left" << endl;
 
     stringstream data_stream, data_stream2;
     cout << rhs.save(data_stream) << " bytes" << endl;
@@ -273,7 +279,7 @@ void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext
             // 3 4 6 7. expand SIC; retrieve indices; retrieve payloads, shift the payload according to the graph; payload paking
             time_start2 = chrono::high_resolution_clock::now();
             vector<Ciphertext> expandedSIC;
-            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, step, i);
+            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, context, step, i);
             time_end2 = chrono::high_resolution_clock::now();
             time_diff2 = chrono::duration_cast<chrono::microseconds>(time_end2 - time_start2);
             cout << time_diff2.count() << " " << "3\n";
@@ -304,7 +310,7 @@ void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext
             // 3 4 6 7. expand SIC; retrieve indices; retrieve payloads, shift the payload according to the graph; payload paking
             // time_start = chrono::high_resolution_clock::now();
             vector<Ciphertext> expandedSIC;
-            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, step, i);
+            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, context, step, i);
             // time_end = chrono::high_resolution_clock::now();
             // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
             // cout << time_diff.count() << " " << "3\n";
@@ -534,9 +540,9 @@ void compressedDetectKeySize(){
     size_t poly_modulus_degree = 32768;
     parms.set_poly_modulus_degree(poly_modulus_degree);
     parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 27, \
-                                                                            22, 42, 60, 60, 60, 60, \
+                                                                            21, 60, 60, 60, 60, \
                                                                             60, 60, 60, 60, 60, 60,\
-                                                                            32, 20, 30 }));
+                                                                            32, 30, 60 }));
     parms.set_plain_modulus(65537);
 
 
@@ -577,6 +583,118 @@ void compressedDetectKeySize(){
     cout << "pk size: " << pk.save(streamPK) << endl;;
 	cout << "rlk size: " << rlk.save(streamRLK) << endl;
 	cout << "rot key size: " << keygen.create_galois_keys(steps).save(streamRTK) << endl;
+
+    public_key.load(context, streamPK);
+    relin_keys.load(context, streamRLK);
+    gal_keys.load(context, streamRTK); //size_t slot_count = batch_encoder.slot_count();
+	seal::Serializable<Ciphertext>  switchingKeypacked = genPackedSwitchingKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
+	stringstream data_stream;
+    cout << "LWE sk (encrypted under BFV) size: " << switchingKeypacked.save(data_stream) << " bytes" << endl;
+}
+
+void levelspecificDetectKeySize(){
+    // step 1. generate PVW sk TODO: change to PK
+    // receiver side
+    auto params = regevParam(10, 65537, 1.2, 8100); 
+    auto sk = regevGenerateSecretKey(params);
+    cout << "Finishing generating sk for PVW cts\n";
+
+    // step 3. generate detection key
+    // receiver side
+    //chrono::high_resolution_clock::time_point time_start, time_end;
+    //chrono::microseconds time_diff;
+    EncryptionParameters parms(scheme_type::bfv);
+    size_t poly_modulus_degree = 32768;
+    auto degree = poly_modulus_degree;
+    parms.set_poly_modulus_degree(poly_modulus_degree);
+    auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28, 
+                                                                            39, 60, 60, 60, 60, 
+                                                                            60, 60, 60, 60, 60, 60,
+                                                                            32, 30, 60 });
+    parms.set_coeff_modulus(coeff_modulus);
+    parms.set_plain_modulus(65537);
+
+
+	prng_seed_type seed;
+    for (auto &i : seed)
+    {
+        i = random_uint64();
+    }
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    parms.set_random_generator(rng);
+
+    SEALContext context(parms, true, sec_level_type::none);
+    print_parameters(context); //auto qualifiers = context.first_context_data()->qualifiers();
+    KeyGenerator keygen(context);
+    SecretKey secret_key = keygen.secret_key();
+    PublicKey public_key;
+    keygen.create_public_key(public_key);
+    RelinKeys relin_keys;
+    // keygen.create_relin_keys(relin_keys);
+    Encryptor encryptor(context, public_key);
+    Evaluator evaluator(context);
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+    GaloisKeys gal_keys;
+
+    vector<int> steps = {0};
+    for(int i = 1; i < 32768/2; i *= 2){
+	//steps.push_back(i);
+        steps.push_back(32768/2 - i);
+    }
+    for(size_t i = 0; i < steps.size(); i++)
+        cout << steps[i] << " ";
+    cout << endl;
+
+    stringstream lvlRTK, lvlRTK2;
+    /////////////////////////////////////// Level specific keys
+    vector<Modulus> coeff_modulus_next = coeff_modulus;
+    coeff_modulus_next.erase(coeff_modulus_next.begin() + 4, coeff_modulus_next.end()-1);
+    EncryptionParameters parms_next = parms;
+    parms_next.set_coeff_modulus(coeff_modulus_next);
+    parms_next.set_random_generator(rng);
+    SEALContext context_next = SEALContext(parms_next, true, sec_level_type::none);
+
+    SecretKey sk_next;
+    sk_next.data().resize(coeff_modulus_next.size() * degree);
+    sk_next.parms_id() = context_next.key_parms_id();
+    // This copies RNS components for first two primes.
+    util::set_poly(secret_key.data().data(), degree, coeff_modulus_next.size() - 1, sk_next.data().data());
+    // This copies RNS components for the special prime.
+    util::set_poly(
+        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
+        sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
+    KeyGenerator keygen_next(context_next, sk_next); // Set a secret key.
+    vector<int> steps_next = {0,1};
+    cout << "level-RTK1: " << keygen_next.create_galois_keys(steps_next).save(lvlRTK) << endl;
+        //////////////////////////////////////
+    vector<Modulus> coeff_modulus_last = coeff_modulus;
+    coeff_modulus_last.erase(coeff_modulus_last.begin() + 2, coeff_modulus_last.end()-1);
+    EncryptionParameters parms_last = parms;
+    parms_last.set_coeff_modulus(coeff_modulus_last);
+    parms_last.set_random_generator(rng);
+    SEALContext context_last = SEALContext(parms_last, true, sec_level_type::none);
+
+    SecretKey sk_last;
+    sk_last.data().resize(coeff_modulus_last.size() * degree);
+    sk_last.parms_id() = context_last.key_parms_id();
+    // This copies RNS components for first two primes.
+    util::set_poly(secret_key.data().data(), degree, coeff_modulus_last.size() - 1, sk_last.data().data());
+    // This copies RNS components for the special prime.
+    util::set_poly(
+        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
+        sk_last.data().data() + degree * (coeff_modulus_last.size() - 1));
+    KeyGenerator keygen_last(context_last, sk_last); // Set a secret key.
+    cout << "level-RTK2: " << keygen_last.create_galois_keys(steps).save(lvlRTK2) << endl;
+    
+    //////////////////////////////////////
+
+    seal::Serializable<PublicKey> pk = keygen.create_public_key();
+	seal::Serializable<RelinKeys> rlk = keygen.create_relin_keys();
+	stringstream streamPK, streamRLK, streamRTK;
+    cout << "pk size: " << pk.save(streamPK) << endl;;
+	cout << "rlk size: " << rlk.save(streamRLK) << endl;
+	cout << "rot key size: " << keygen.create_galois_keys(vector<int>({1})).save(streamRTK) << endl;
 
     public_key.load(context, streamPK);
     relin_keys.load(context, streamRLK);
@@ -709,7 +827,7 @@ void OMR2(){
     size_t counter = 0;
     serverOperations2therest(lhs, bipartite_map, rhs, secret_key,
                         packedSIC, payload, relin_keys, gal_keys,
-                        poly_modulus_degree, context, params, numOfTransactions, counter);
+                        poly_modulus_degree, context, context, params, numOfTransactions, counter);
 
     cout << decryptor.invariant_noise_budget(lhs) << " bits left" << endl;
     cout << decryptor.invariant_noise_budget(rhs) << " bits left" << endl;
@@ -750,7 +868,7 @@ void OMR3(){
     //chrono::high_resolution_clock::time_point time_start, time_end;
     //chrono::microseconds time_diff;
     EncryptionParameters parms(scheme_type::bfv);
-    size_t poly_modulus_degree = 32768;
+    size_t poly_modulus_degree = 8192;
     parms.set_poly_modulus_degree(poly_modulus_degree);
     parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 28, \
                                                                             31, 27, 30, 30, 30, 30, 30, 30, 30, 30, \
@@ -837,7 +955,7 @@ void OMR2multi(){
     // general
     vector<PVWCiphertext> SICPVW;
     vector<vector<uint64_t>> payload;
-    auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, 20, params, true);
+    auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, 10, params, true);
     cout << expected.size() << " pertinent msg: Finishing preparing transactions\n";
 
 
@@ -848,12 +966,15 @@ void OMR2multi(){
     //chrono::microseconds time_diff;
     EncryptionParameters parms(scheme_type::bfv);
     size_t poly_modulus_degree = 32768;
+    auto degree = poly_modulus_degree;
     parms.set_poly_modulus_degree(poly_modulus_degree);
-    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 27, \
-                                                                            22, 42, 60, 60, 60, 60, \
-                                                                            60, 60, 60, 60, 60, 60,\
-                                                                            32, 20, 60 }));
+    auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28, 
+                                                                            39, 60, 60, 60, 60, 
+                                                                            60, 60, 60, 60, 60, 60,
+                                                                            32, 30, 60 });
+    parms.set_coeff_modulus(coeff_modulus);
     parms.set_plain_modulus(65537);
+
 
 	prng_seed_type seed;
     for (auto &i : seed)
@@ -896,6 +1017,56 @@ void OMR2multi(){
     vector<int> stepsfirst = {1};
     keygen.create_galois_keys(stepsfirst, gal_keys);
 
+    /////////////////////////////////////////////////////////////// Rot Key gen
+    vector<int> steps = {0};
+    for(int i = 1; i < int(poly_modulus_degree/2); i *= 2){
+	    steps.push_back(i);
+    }
+    // keygen.create_galois_keys(steps, gal_keys);
+
+    cout << "Finishing generating detection keys\n";
+
+    /////////////////////////////////////// Level specific keys
+    vector<Modulus> coeff_modulus_next = coeff_modulus;
+    coeff_modulus_next.erase(coeff_modulus_next.begin() + 4, coeff_modulus_next.end()-1);
+    EncryptionParameters parms_next = parms;
+    parms_next.set_coeff_modulus(coeff_modulus_next);
+    SEALContext context_next = SEALContext(parms_next, true, sec_level_type::none);
+
+    SecretKey sk_next;
+    sk_next.data().resize(coeff_modulus_next.size() * degree);
+    sk_next.parms_id() = context_next.key_parms_id();
+    // This copies RNS components for first two primes.
+    util::set_poly(secret_key.data().data(), degree, coeff_modulus_next.size() - 1, sk_next.data().data());
+    // This copies RNS components for the special prime.
+    util::set_poly(
+        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
+        sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
+    cout << "!!!---" << endl;
+    KeyGenerator keygen_next(context_next, sk_next); // Set a secret key.
+    vector<int> steps_next = {0,1};
+    keygen_next.create_galois_keys(steps_next, gal_keys_next);
+        //////////////////////////////////////
+    vector<Modulus> coeff_modulus_last = coeff_modulus;
+    coeff_modulus_last.erase(coeff_modulus_last.begin() + 2, coeff_modulus_last.end()-1);
+    EncryptionParameters parms_last = parms;
+    parms_last.set_coeff_modulus(coeff_modulus_last);
+    SEALContext context_last = SEALContext(parms_last, true, sec_level_type::none);
+
+    SecretKey sk_last;
+    sk_last.data().resize(coeff_modulus_last.size() * degree);
+    sk_last.parms_id() = context_last.key_parms_id();
+    // This copies RNS components for first two primes.
+    util::set_poly(secret_key.data().data(), degree, coeff_modulus_last.size() - 1, sk_last.data().data());
+    // This copies RNS components for the special prime.
+    util::set_poly(
+        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
+        sk_last.data().data() + degree * (coeff_modulus_last.size() - 1));
+    KeyGenerator keygen_last(context_last, sk_last); // Set a secret key.
+    keygen_last.create_galois_keys(steps, gal_keys_last);
+    
+    //////////////////////////////////////
+
     vector<Ciphertext> temps(numcores);
 
     NTL::SetNumThreads(numcores);
@@ -922,14 +1093,6 @@ void OMR2multi(){
     packedSIC = temps[0];
     // }
 
-    vector<int> steps = {0};
-    for(int i = 1; i < int(poly_modulus_degree/2); i *= 2){
-	    steps.push_back(i);
-    }
-    keygen.create_galois_keys(steps, gal_keys);
-
-    cout << "Finishing generating detection keys\n";
-
     // step 4. detector operations
     vector<Ciphertext> lhs_multi(numcores), rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
@@ -944,9 +1107,9 @@ void OMR2multi(){
         MemoryPoolHandle my_pool = MemoryPoolHandle::New();
         auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
         //evaluator.encrypt_zero(rhs);
-        serverOperations2therest(lhs_multi[i], bipartite_map[i], rhs_multi[i], secret_key,
-                            temps[i], payload_multicore[i], relin_keys, gal_keys,
-                            poly_modulus_degree, context, params, numOfTransactions/numcores, counter[i]);
+        serverOperations2therest(lhs_multi[i], bipartite_map[i], rhs_multi[i], sk_next,
+                            temps[i], payload_multicore[i], relin_keys, gal_keys_next,
+                            poly_modulus_degree, context_next, context_last, params, numOfTransactions/numcores, counter[i]);
         MemoryManager::SwitchProfile(std::move(old_prof));
     }
     NTL_EXEC_RANGE_END;
@@ -967,15 +1130,15 @@ void OMR2multi(){
     
 }
 
+
 int main(){
-    // speedTest(4);
-    // speedTest(2);
-    // speedTest(1);
+    // testFunc();
+    // testCalIndices();
     // return 0;
     // degreeUpToTest();
 
     // 1. To check compressed detection size
-    compressedDetectKeySize();
+    levelspecificDetectKeySize(); 
 
     // 3. To run OMR3
     // OMR3();
@@ -984,7 +1147,7 @@ int main(){
     // OMR2();
 
     // multi-thread test OMR2
-    OMR2multi();
+    OMR2multi(); 
 
     
 }

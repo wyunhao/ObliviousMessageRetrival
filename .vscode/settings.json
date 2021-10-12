@@ -9,6 +9,7 @@
         "vector": "cpp",
         "ostream": "cpp",
         "map": "cpp",
-        "chrono": "cpp"
+        "chrono": "cpp",
+        "iosfwd": "cpp"
     }
 }

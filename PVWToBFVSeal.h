@@ -337,12 +337,15 @@ T modpow(T base, T exp, T modulus) {
 }
 
 inline
-void calIndices(vector<uint64_t>& output, uint64_t p = 65537){
+void calIndices(vector<uint64_t>& output, uint64_t p = 65537, uint64_t r = 850){
     output.resize(p-1, 0);
-    for(uint64_t i = 1; i < p-1; i+=2){
-        for(uint64_t j = 0; j < (p-1)/2+1; j++){
-            output[i] += modpow(j, p-1-i, p);
-            output[i] %= p;
+    for(uint64_t i = 1; i <= p-1; i++){
+        cout << i << endl;
+        for(uint64_t j = 0; j <= p-1; j++){
+            if((j <= r) || (j >= (p-r))){
+                output[i-1] += modpow(j, p-1-i, p);
+                output[i-1] %= p;
+            }
         }
     }
 }
@@ -400,46 +403,13 @@ void lessThan_PatersonStockmeyer(Ciphertext& ciphertext, const Ciphertext& input
                 for(int i = 0; i < 64; i++){
                     temp.push_back(Ciphertext(my_pool3));
                 }
-                // {
-                //     MemoryPoolHandle my_pool4 = MemoryPoolHandle::New(true);
-                //     // auto old_prof4 = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool4)));
-                //     cout << "???3" << endl;
-                //     for(int i = 0; i < 32; i++){
-                //         temp.push_back(Ciphertext(my_pool4));
-                //     }
-                //     {
-                //         MemoryPoolHandle my_pool5 = MemoryPoolHandle::New(true);
-                //         // auto old_prof5 = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool5)));
-                //         cout << "???4" << endl;
-                //         for(int i = 0; i < 32; i++){
-                //             temp.push_back(Ciphertext(my_pool5));
-                //         }
-                //         cout << temp.size() << endl;
-                        calUptoDegreeK(temp, input, 256, relin_keys, context);
-                        cout << temp.size() << "---" << endl;
-                        for(size_t j = 0; j < temp.size()-1; j++){ // match to one level left, the one level left is for plaintext multiplication noise
-                            for(int i = 0; i < 3; i++){
-                                evaluator.mod_switch_to_next_inplace(temp[j]);
-                            }
-                        }
-                //         for(int i = 255; i > 255-32; i--){
-                //             kCTs[i] = temp[i];
-                //             temp[i].release();
-                //         }
-                //         // MemoryManager::SwitchProfile(std::move(old_prof5));
-                //         cout << "???5" << endl;
-                //     }
-                //     for(int i = 255-32; i > 255-32-32; i--){
-                //         kCTs[i] = temp[i];
-                //         temp[i].release();
-                //     }
-                //     // MemoryManager::SwitchProfile(std::move(old_prof4));
-                //     cout << "???6" << endl;
-                // }
-                // for(int i = 255-32-32; i > 255-32-32-32; i--){
-                //     kCTs[i] = temp[i];
-                //     temp[i].release();
-                // }
+                calUptoDegreeK(temp, input, 256, relin_keys, context);
+                cout << temp.size() << "---" << endl;
+                for(size_t j = 0; j < temp.size()-1; j++){ // match to one level left, the one level left is for plaintext multiplication noise
+                    for(int i = 0; i < 3; i++){
+                        evaluator.mod_switch_to_next_inplace(temp[j]);
+                    }
+                }
                 for(int i = 255; i > 255-32-32; i--){
                     kCTs[i] = temp[i];
                     temp[i].release();
@@ -468,6 +438,9 @@ void lessThan_PatersonStockmeyer(Ciphertext& ciphertext, const Ciphertext& input
     // std::chrono::seconds dura(90);
     // std::this_thread::sleep_for( dura );
     calUptoDegreeK(kToMCTs, kCTs[kCTs.size()-1], 256, relin_keys, context);
+    for(int i = 0; i < 3; i++){
+        evaluator.mod_switch_to_next_inplace(kCTs[kCTs.size()-1]);
+    }
     
     cout << "2.1: ";
     for(size_t i = 0; i < kCTs[0].parms_id().size(); i++){
@@ -493,27 +466,29 @@ void lessThan_PatersonStockmeyer(Ciphertext& ciphertext, const Ciphertext& input
         Ciphertext levelSum;
         bool flag = false;
         for(int j = 0; j < 256; j++){
-            if(LTindices[i*256+j] != 0){    
-                // cout << j <<",";
+            if(rangeCheckIndices[i*256+j] != 0){
                 // cout << i << " " << j << " " << LTindices[i*256+j] << endl;
-                vector<uint64_t> intInd(degree, LTindices[i*256+j]);
+                vector<uint64_t> intInd(degree, rangeCheckIndices[i*256+j]);
                 Plaintext plainInd;
                 batch_encoder.encode(intInd, plainInd);
-                if(j % 2 == 0){
-                    cout << "Should not be even indices" << endl;
-                    if(i*256 + j == 65536)
-                        cout << "Seriously?" << endl;
-                    return;
-                } else if (!flag){
-                    evaluator.multiply_plain(kCTs[j-1], plainInd, levelSum);
+                // if(j % 2 == 0){
+                //     cout << "Should not be even indices" << endl;
+                //     if(i*256 + j == 65536)
+                //         cout << "Seriously?" << endl;
+                //     return;
+                // } else 
+                if (!flag){
+                    evaluator.multiply_plain(kCTs[j], plainInd, levelSum);
                     flag = true;
                 } else {
                     Ciphertext tmp;
-                    evaluator.multiply_plain(kCTs[j-1], plainInd, tmp);
+                    evaluator.multiply_plain(kCTs[j], plainInd, tmp);
                     evaluator.add_inplace(levelSum, tmp);
                 }
+                // cout << i << " " << j << " " << LTindices[i*256+j] << endl;
             }
         }
+        // cout << i << endl;
         evaluator.mod_switch_to_inplace(levelSum, kToMCTs[i].parms_id()); // mod down the plaintext multiplication noise
         if(i == 0){
             // evaluator.mod_switch_to_next_inplace(levelSum);
@@ -530,15 +505,17 @@ void lessThan_PatersonStockmeyer(Ciphertext& ciphertext, const Ciphertext& input
         cout << " " << ciphertext.parms_id()[i];
     }
     cout  << endl;
+    // evaluator.mod_switch_to_next_inplace(ciphertext);
     // cout << "2.4: " << ciphertext.parms_id() << endl;
 
-    vector<uint64_t> intInd(degree, 32769); // (p+1)/2
+    vector<uint64_t> intInd(degree, 1); 
     Plaintext plainInd;
     Ciphertext tmep;
     batch_encoder.encode(intInd, plainInd);
-    evaluator.multiply_plain(kToMCTs[255], plainInd, tmep);
+    // evaluator.multiply_plain(kToMCTs[255], plainInd, tmep);
     // evaluator.mod_switch_to_next_inplace(tmep);
-    evaluator.add_inplace(ciphertext, tmep);
+    evaluator.negate_inplace(ciphertext);
+    evaluator.add_plain_inplace(ciphertext, plainInd);
     cout << "2.5: ";
     for(size_t i = 0; i < ciphertext.parms_id().size(); i++){
         cout << " " << ciphertext.parms_id()[i];
@@ -562,38 +539,39 @@ void newRangeCheckPVW(vector<Ciphertext>& output, const int& range, const RelinK
     Evaluator evaluator(context);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> res(param.ell*2);
+    vector<Ciphertext> res(param.ell);
 
     for(int j = 0; j < param.ell; j++){
         {
             MemoryPoolHandle my_pool_larger = MemoryPoolHandle::New(true);
             auto old_prof_larger = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool_larger)));
             cout << j << endl;
-            vector<uint64_t> vectorOfInts(degree, 65537-range); 
-            Plaintext plaintext;
-            batch_encoder.encode(vectorOfInts, plaintext);
+            // vector<uint64_t> vectorOfInts(degree, 65537-range); 
+            // Plaintext plaintext;
+            // batch_encoder.encode(vectorOfInts, plaintext);
             auto tmp1 = output[j];
-            evaluator.add_plain_inplace(tmp1, plaintext);
-            lessThan_PatersonStockmeyer(res[j*2], tmp1, 65537, degree, relin_keys, context);
+            // evaluator.add_plain_inplace(tmp1, plaintext);
+            // lessThan_PatersonStockmeyer(res[j*2], tmp1, 65537, degree, relin_keys, context);
+            lessThan_PatersonStockmeyer(res[j], tmp1, 65537, degree, relin_keys, context);
             tmp1.release();
-            plaintext.release();
+            // plaintext.release();
         //     MemoryManager::SwitchProfile(std::move(old_prof_larger));
         // }
 
         // {   
         //     MemoryPoolHandle my_pool_larger = MemoryPoolHandle::New(true);
         //     auto old_prof_larger = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool_larger)));
-            cout << j << endl;
-            vector<uint64_t> vectorOfInts2(degree, 65537-range); 
-            Plaintext plaintext2;
-            batch_encoder.encode(vectorOfInts2, plaintext2);
-            auto tmp2 = output[j];
-            evaluator.negate_inplace(tmp2);
-            evaluator.add_plain_inplace(tmp2, plaintext2);
-            lessThan_PatersonStockmeyer(res[j*2+1], tmp2, 65537, degree, relin_keys, context);
-            tmp2.release();
-            plaintext2.release();
-            MemoryManager::SwitchProfile(std::move(old_prof_larger));
+            // cout << j << endl;
+            // vector<uint64_t> vectorOfInts2(degree, 65537-range); 
+            // Plaintext plaintext2;
+            // batch_encoder.encode(vectorOfInts2, plaintext2);
+            // auto tmp2 = output[j];
+            // evaluator.negate_inplace(tmp2);
+            // evaluator.add_plain_inplace(tmp2, plaintext2);
+            // lessThan_PatersonStockmeyer(res[j*2+1], tmp2, 65537, degree, relin_keys, context);
+            // tmp2.release();
+            // plaintext2.release();
+            // MemoryManager::SwitchProfile(std::move(old_prof_larger));
         }
     }
 

@@ -464,7 +464,7 @@ void testSIC4(){
     vector<Ciphertext> tst;
 
     time_start = chrono::high_resolution_clock::now();
-    expandSIC(tst, encrypted_matrix, galois_keys, slot_count, context, 7);
+    expandSIC(tst, encrypted_matrix, galois_keys, slot_count, context,context, 7);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << "Done [" << time_diff.count() << " microseconds]" << endl;
@@ -1294,7 +1294,7 @@ void testCalIndices(){
     time_start = chrono::high_resolution_clock::now();
 
     vector<uint64_t> ind;
-    calIndices(ind, 8009);
+    calIndices(ind, 65537, 850);
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
@@ -1401,4 +1401,22 @@ void speedTest(int numcores = 4){
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " us for " << numcores << " core(s)." << endl;
+}
+
+void testFunc(){
+    vector<uint64_t> xs = {65537-851, 65537-850, 65537-800, 65537-8, 65537-1, 0, 1, 8, 800, 850, 851, 5482, 6875, 35768};
+    for(size_t j = 0; j < 65537; j++){
+        uint64_t x = j;
+        uint64_t res = 0;
+        for(uint64_t i = 1; i < 65537; i++){
+            auto tmp = modpow(x, i, uint64_t(65537));
+            res += (tmp*rangeCheckIndices[i-1]);
+            res %= 65537;
+        }
+        if( j < 32768)
+        cout << x << ": " << res << endl;
+        else 
+        cout << "-" << 65537-x << ": " << res << endl;
+    }
+    
 }
