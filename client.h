@@ -83,6 +83,11 @@ void formRhs(vector<vector<int>>& rhs, const Ciphertext& packedPayloads, const S
             rhs[i][j] = int(rhsint[i*payloadSlots + j]);
         }
     }
+    // for(size_t i = 0; i < rhs.size(); i++){
+    //     for(size_t j = 0; j < rhs[i].size(); j++)
+    //         cout << rhs[i][j] << " ";
+    //     cout << endl;
+    // }
 }
 
 void formLhs(vector<vector<int>>& lhs, map<int, int>& pertinentIndices, const vector<vector<int>>& bipartite_map,
@@ -105,21 +110,34 @@ void formLhs(vector<vector<int>>& lhs, map<int, int>& pertinentIndices, const ve
 
 void formLhsWeights(vector<vector<int>>& lhs, map<int, int>& pertinentIndices, const vector<vector<int>>& bipartite_map, vector<vector<int>>& weights,
                             const int start = 0, const int num_of_buckets = 64){ // the last two parameters are for more buckets
-    cout << "weights! " << endl;
+    // cout << "weights! " << endl;
     auto pertinentTransactionNum = pertinentIndices.size();
     lhs.resize(num_of_buckets);
     for(int i = 0; i < num_of_buckets; i++){
         lhs[i].resize(pertinentTransactionNum);
     }
+    // cout << bipartite_map[9000-8192] << endl;
+    // cout << bipartite_map[9002-8192] << endl;
+    // cout << weights[9000-8192] << endl;
+    // cout << weights[9002-8192] << endl;
+
+
 
     map<int, int>::iterator itr;
     for(itr = pertinentIndices.begin(); itr != pertinentIndices.end(); ++itr){
         auto ptr = &bipartite_map[itr->first];
+        // cout << bipartite_map[itr->first] << endl;
+        // cout << itr->first << endl;
         for(size_t j = 0; j < ptr->size(); j++){
             lhs[(*ptr)[j]][itr->second] = weights[itr->first][j]; // j can be replaced. need to reimplement
         }
 
     }
+    // for(size_t i = 0; i < lhs.size(); i++){
+    //     for(size_t j = 0; j < lhs[i].size(); j++)
+    //         cout << lhs[i][j] << " ";
+    //     cout << endl;
+    // }
 }
 
 
@@ -132,7 +150,7 @@ void mult_scalar_vec(vector<int>& output, const vector<int>& input, int k){
         long temp = ((long)input[i]*(long)k)%65537;
         output[i] = temp;
         if(output[i] < 0)
-            cout <<temp << " " << k << " " << input[i] << endl;
+            cerr <<temp << " " << k << " " << input[i] << endl;
     } 
 }
 

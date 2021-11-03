@@ -12,13 +12,13 @@ void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Cipher
     Evaluator evaluator(context);
     vector<uint64_t> pod_matrix(degree, 0ULL); // TODOmulti: move inside to the loop for multi-threading
     if(start + SIC.size() >= 16*degree){
-        cout << "counter + SIC.size should be less, please check" << endl;
+        cerr << "counter + SIC.size should be less, please check" << endl;
         return;
     }
-    if(SIC.size() > 16*306){ // This is because we only recover 306 slots for expandSIC, for efficiency.
-        cout << "Take at most 4896 elements at a time." << endl;
-        return;
-    }
+    // if(SIC.size() > 16*306){ // This is because we only recover 306 slots for expandSIC, for efficiency.
+    //     cout << "Take at most 4896 elements at a time." << endl;
+    //     return;
+    // }
     // auto saver = counter;
     //if(!isMulti){ // if not multi, counter needs to start from 0 and then add back
     //    counter = 0;
@@ -32,8 +32,9 @@ void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Cipher
         pod_matrix[idx] = (1<<shift);
         Plaintext plain_matrix;
         batch_encoder.encode(pod_matrix, plain_matrix);
-
-        if(i == 0 && start == 0){
+        evaluator.transform_to_ntt_inplace(plain_matrix, SIC[i].parms_id());
+        // cout << i << " ~~~ " << plain_matrix.is_ntt_form() << " ~~~ " << SIC[i].is_ntt_form() << endl;
+        if(i == 0 && (start%degree) == 0){
             evaluator.multiply_plain(SIC[i], plain_matrix, indexIndicator);
         }
         else{
@@ -166,6 +167,8 @@ void bipartiteGraphGeneration(vector<vector<int>>& bipartite_map, const int& num
 
 void bipartiteGraphWeightsGeneration(vector<vector<int>>& bipartite_map, vector<vector<int>>& weights, const int& num_of_transactions, const int& num_of_buckets, const int& repetition, const int& seed){
     srand(seed);
+    bipartite_map.clear();
+    weights.clear();
     bipartite_map.resize(num_of_transactions);
     weights.resize(num_of_transactions);
     for(int i = 0; i < num_of_transactions; i++)
@@ -190,7 +193,7 @@ void payloadPacking(Ciphertext& result, const vector<Ciphertext>& payloads, cons
     Evaluator evaluator(context);
     if(payloads.size() != bipartite_map.size())
     {
-        cout << "Something wrong. Payload num should be the same as the bipartite map size." << endl;
+        cerr << "Something wrong. Payload num should be the same as the bipartite map size." << endl;
         return;
     }
 
@@ -224,26 +227,54 @@ void payloadPacking(Ciphertext& result, const vector<Ciphertext>& payloads, cons
 
 // Note that real payload size = payloadSize / 2
 void payloadRetrievalOptimizedwithWeights(vector<vector<Ciphertext>>& results, const vector<vector<uint64_t>>& payloads, const vector<vector<int>>& bipartite_map, vector<vector<int>>& weights,
-                        const vector<Ciphertext>& SIC, const SEALContext& context, const size_t& start = 0, const int payloadSize = 306){ // TODOmulti: can be multithreaded extremely easily
+                        const vector<Ciphertext>& SIC, const SEALContext& context, const size_t& degree = 32768, const size_t& start = 0, const size_t& local_start = 0, const int payloadSize = 306){ // TODOmulti: can be multithreaded extremely easily
     Evaluator evaluator(context);
     BatchEncoder batch_encoder(context);
     results.resize(SIC.size());
+    // cout << "!!!" << start << " " << local_start << " " << endl;
 
     for(size_t i = 0; i < SIC.size(); i++){
-        results[i].resize(bipartite_map[i+start].size());
+        // if((i+start == 9000-8192) || (i+start == 9002-8192)){
+        //     cout << bipartite_map[i+start] << endl;
+        //     cout << weights[i+start] << endl;
+        // }
+        // cout << payloads[i+local_start][0] << " ";
+        // if(start >= 8192)
+            // cout << i << " " << start << " " << bipartite_map.size()  << endl;
+        results[i].resize(1);
+        vector<uint64_t> padded(degree, 0);
+        // if(start >= 8192)
+            // cout << i << "?" << start << endl;
         for(size_t j = 0; j < bipartite_map[i+start].size(); j++){
-            vector<uint64_t> padded(bipartite_map[i+start][j]*payloadSize, 0);
-            padded.insert(padded.end(), payloads[i+start].begin(), payloads[i+start].end() );
-		    for(size_t k = 0; k < padded.size(); k++)
-		    	{padded[k] *= weights[i+start][j]; padded[k] %= 65537;} // weights, to be changed.
+            // if(start >= 8192)
+                // cout << j << "?" << padded.size() << " " << start << " " << local_start << endl;
+            auto paddedStart = bipartite_map[i+start][j]*payloadSize;
+            for(size_t k = 0; k < payloads[i+local_start].size(); k++){
+                auto toAdd = payloads[i+local_start][k] *weights[i+start][j];
+                toAdd %= 65537;
+                padded[k+paddedStart] += toAdd;
+            }
+            // padded.insert(padded.end(), payloads[i+local_start].begin(), payloads[i+local_start].end() );
+            // // if(start >= 8192)
+            //     // cout << j << "?" << padded.size() << endl;
+		    // for(size_t k = 0; k < padded.size(); k++)
+		    // 	{padded[k] *= weights[i+start][j]; padded[k] %= 65537;} // weights, to be changed.
+            // // if(start >= 8192)
+            //     // cout << j << "?" << padded.size() << endl;
 
-            Plaintext plain_matrix;
-            batch_encoder.encode(padded, plain_matrix);
-
-            evaluator.multiply_plain(SIC[i], plain_matrix, results[i][j]);
         }
+        Plaintext plain_matrix;
+        batch_encoder.encode(padded, plain_matrix);
+        evaluator.transform_to_ntt_inplace(plain_matrix, SIC[i].parms_id());
+        // if(start >= 8192)
+            // cout << j << "?" << padded.size() << endl;
+
+        evaluator.multiply_plain(SIC[i], plain_matrix, results[i][0]);
+        // if(start >= 8192)
+            // cout << j << "?" << padded.size() << endl;
         
     }
+    // cout << endl;
 }
 
 // Note that real payload size = payloadSize / 2
@@ -281,8 +312,8 @@ void payloadPackingOptimized(Ciphertext& result, const vector<vector<Ciphertext>
     //}
 
     for(size_t i = 0; i < payloads.size(); i++){
-        for(size_t j = 0; j < bipartite_map[i+start].size(); j++){
-            if(i == 0 && j == 0 && start == 0)
+        for(size_t j = 0; j < payloads[i].size(); j++){
+            if(i == 0 && j == 0 && (start%degree) == 0)
                 result = payloads[i][j];
             else{
                 for(size_t k = 0; k < 1; k++){ 
@@ -345,7 +376,7 @@ void payloadPackingMulti(Ciphertext& result, const vector<Ciphertext>& payloads,
     Evaluator evaluator(context);
     if(payloads.size() != bipartite_map.size())
     {
-        cout << "Something wrong. Payload num should be the same as the bipartite map size." << endl;
+        cerr << "Something wrong. Payload num should be the same as the bipartite map size." << endl;
         return;
     }
 
