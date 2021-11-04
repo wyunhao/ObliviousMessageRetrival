@@ -572,7 +572,7 @@ void OMR2multi(){
     // general
     vector<PVWCiphertext> SICPVW;
     vector<vector<uint64_t>> payload;
-    auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, numOfTransactions/8, params, true);
+    auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, numOfTransactions/50, params);
     cout << expected.size() << " pertinent msg: Finishing preparing transactions\n";
 
 
