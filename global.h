@@ -2,7 +2,7 @@
 using namespace seal;
 
 int numcores = 1;
-int OMRtwoM = 100;
+int OMRtwoM = 20;
 int num_batches = 1;
 int mod_switch_counter = 0;
 GaloisKeys gal_keys_next;

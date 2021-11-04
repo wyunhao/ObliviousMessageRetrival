@@ -18,14 +18,12 @@ vector<vector<uint64_t>> preparinngTransactions(vector<PVWCiphertext>& SICPVW, v
     vector<vector<uint64_t>> ret;
     SICPVW.resize(numOfTransactions);
     vector<int> zeros(params.ell, 0);
-    int pertinentCounter = 0;
     for(int i = 0; i < numOfTransactions; i++){
         // if((i == 9000-8192) || (i == 9002-8192) || (i == 9000) || (i == 9002)){
-        if((rand()%pertinentfactor == 0) && pertinentCounter < 50){
+        if((rand()%pertinentfactor == 0)){
             // PVWEncSK(SICPVW[i], zeros, sk, params);
             PVWEncPK(SICPVW[i], zeros, pk, params);
             msgs[i] = 1;
-            pertinentCounter++;
         }
         else
         {
@@ -168,7 +166,7 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
         // evaluator.mod_switch_to_next_inplace(packedSIC);
     // }
     for(int i = counter; i < counter+numOfTransactions; i += step){
-        if (i % 16384 == 0){
+        if (i % 256 == 0){
             // cout << packedSIC.parms_id() << endl;
             // cout << i <<" " << numOfTransactions << endl;
             chrono::high_resolution_clock::time_point time_start2, time_end2;
@@ -370,7 +368,7 @@ void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext
     cout << time_diff.count() << " " << "7\n";
 
     while(context.last_parms_id() != rhs.parms_id()){
-        cout << '?' << endl;
+        // cout << '?' << endl;
         for(size_t i = 0; i < lhs.size(); i++){
             for(size_t j = 0; j < lhs[i].size(); j++)
                 evaluator.mod_switch_to_next_inplace(lhs[i][j]);
@@ -383,9 +381,9 @@ void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext
     //    evaluator.mod_switch_to_next_inplace(lhs);
     //}
 
-    stringstream data_stream, data_stream2;
-    cout << rhs.save(data_stream) << " bytes" << endl;
-    cout << lhs[0][0].save(data_stream2) << " * 15 ~ bytes" << endl;
+    // stringstream data_stream, data_stream2;
+    // cout << rhs.save(data_stream) << " bytes" << endl;
+    // cout << lhs[0][0].save(data_stream2) << " * 15 ~ bytes" << endl;
 }
 
 vector<vector<long>> receiverDecoding(Ciphertext& lhsEnc, vector<vector<int>>& bipartite_map, Ciphertext& rhsEnc,
@@ -519,8 +517,8 @@ vector<vector<long>> receiverDecodingOMR3(vector<vector<Ciphertext>>& lhsEnc, ve
     auto newrhs = equationSolving(lhs, rhs, payloadSize);
     cout << "4\n";
 
-    // for(size_t i = 0; i < newrhs.size(); i++)
-    //     cout << newrhs[i] << endl;
+    for(size_t i = 0; i < newrhs.size(); i++)
+        cout << newrhs[i] << endl;
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
@@ -560,7 +558,7 @@ void OMR2multi(){
     // int numcores = 4;
     size_t poly_modulus_degree = 32768;
 
-    int numOfTransactions = poly_modulus_degree*16*numcores; 
+    int numOfTransactions = poly_modulus_degree*16*numcores;
     createDatabase(numOfTransactions, 306); // one time
     cout << "Finishing createDatabase\n";
 
@@ -574,7 +572,7 @@ void OMR2multi(){
     // general
     vector<PVWCiphertext> SICPVW;
     vector<vector<uint64_t>> payload;
-    auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, numOfTransactions/50, params, true);
+    auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, numOfTransactions/8, params, true);
     cout << expected.size() << " pertinent msg: Finishing preparing transactions\n";
 
 
@@ -630,8 +628,6 @@ void OMR2multi(){
         SICPVW_multicore[i] = vector<PVWCiphertext>(SICPVW.begin()+i*numOfTransactions/numcores, SICPVW.begin()+(i+1)*numOfTransactions/numcores);
         payload_multicore[i] = vector<vector<uint64_t>>(payload.begin()+i*numOfTransactions/numcores, payload.begin()+(i+1)*numOfTransactions/numcores);
     }
-    SICPVW.clear();
-    payload.clear();
 
     GaloisKeys gal_keys;
     vector<int> stepsfirst = {1};
@@ -762,16 +758,17 @@ void OMR2multi(){
             j++;
             // break;
         }
-        while(context.last_parms_id() != lhs_multi[i].parms_id()){
-            cout << "!" << endl;
-            evaluator.mod_switch_to_next_inplace(rhs_multi[i]);
-            evaluator.mod_switch_to_next_inplace(lhs_multi[i]);
-        }
         
         MemoryManager::SwitchProfile(std::move(old_prof));
     }
     NTL_EXEC_RANGE_END;
     }
+
+    while(context.last_parms_id() != lhs_multi[0].parms_id()){
+            cout << "!" << endl;
+            evaluator.mod_switch_to_next_inplace(rhs_multi[0]);
+            evaluator.mod_switch_to_next_inplace(lhs_multi[0]);
+        }
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
