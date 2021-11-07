@@ -5,23 +5,43 @@
 #include <map>
 
 using namespace seal;
+#define PROFILE
 
 void decodeIndices(map<int, int>& pertinentIndices, const Ciphertext& indexPack, const int& num_of_transactions, const size_t& degree, const SecretKey& secret_key, const SEALContext& context){
+    // TimeVar t;
+    // TIC(t);
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
     vector<uint64_t> indexPackint(degree);
     Plaintext plain_result;
     decryptor.decrypt(indexPack, plain_result);
     batch_encoder.decode(plain_result, indexPackint);
+    // cout << TOC_US(t) << endl;
+    // cout << "???" << endl;
     int counter = 0;
-    for(int i = 0; i < num_of_transactions; i++){
-        int idx = i/16; // modulus is 65537, so we can support at most 16 bits per slot
-        int shift = i % 16;
-        if(indexPackint[idx]&(1<<shift)) // check if that slot is 1
+    int backcounter = 16;
+    int idx = 0;
+    // TIC(t);
+    for(int i = 0; i < num_of_transactions;){
+        if(!indexPackint[idx])
+        {
+            // cout << idx << endl;
+            idx += 1;
+            i += backcounter;
+            backcounter = 16;
+            continue;
+        }
+        // int shift = i % 16;
+        if(indexPackint[idx]&1) // check if that slot is 1
         {
             pertinentIndices.insert(pair<int, int>(i, counter++));
         }
+        indexPackint[idx] >>= 1;
+        backcounter -= 1;
+        i++;
     }
+    // cout << TOC_US(t) << endl;
+    // cout << "???" << endl;
 }
 
 void decodeIndicesRandom(map<int, int>& pertinentIndices, const vector<vector<Ciphertext>>& indexPack, const vector<Ciphertext>& indexCounter,

@@ -39,8 +39,8 @@ vector<vector<uint64_t>> preparinngTransactions(vector<PVWCiphertext>& SICPVW, v
     // cout << "Supposed result: \n";
     for(int i = 0; i < numOfTransactions; i++){
         if(msgs[i]){
-            cout << i << endl;
-            // cout << i << ": " << payload[i] << endl;
+            payload[i][0] = 0;
+            cout << i << ": " << payload[i][0] << payload[i][1] << endl;
             ret.push_back(payload[i]);
         }
     }
@@ -152,10 +152,10 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
 
     // 5. generate bipartite graph. in real application, we return only the seed, but in demo, we directly give the graph
     time_start = chrono::high_resolution_clock::now();
-    int repeatition = 5;
+    // int repeatition = 5;
     // bipartiteGraphGeneration(bipartite_map,numOfTransactions,100,repeatition,seed);
-    vector<vector<int>> weights;
-    bipartiteGraphWeightsGeneration(bipartite_map, weights,numOfTransactions*16,OMRtwoM,repeatition,seed); // numOfTransactions*16 is hardcoded
+    // vector<vector<int>> weights;
+    // bipartiteGraphWeightsGeneration(bipartite_map, weights,numOfTransactions*16,OMRtwoM,repeatition,seed); // numOfTransactions*16 is hardcoded
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "5\n";
@@ -194,13 +194,13 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
             time_start2 = chrono::high_resolution_clock::now();
             vector<vector<Ciphertext>> payloadUnpacked;
             // payloadRetrievalOptimized(payloadUnpacked, payload, bipartite_map, expandedSIC, context, i);
-            payloadRetrievalOptimizedwithWeights(payloadUnpacked, payload, bipartite_map, weights, expandedSIC, context, degree, i, i - counter);
+            payloadRetrievalOptimizedwithWeights(payloadUnpacked, payload, bipartite_map_glb, weights_glb, expandedSIC, context, degree, i, i - counter);
             time_end2 = chrono::high_resolution_clock::now();
             time_diff2 = chrono::duration_cast<chrono::microseconds>(time_end2 - time_start2);
             cout << time_diff2.count() << " " << "6\n";
     
             time_start2 = chrono::high_resolution_clock::now();
-            payloadPackingOptimized(rhs, payloadUnpacked, bipartite_map, degree, context, gal_keys, i);
+            payloadPackingOptimized(rhs, payloadUnpacked, bipartite_map_glb, degree, context, gal_keys, i);
             time_end2 = chrono::high_resolution_clock::now();
             time_diff2 = chrono::duration_cast<chrono::microseconds>(time_end2 - time_start2);
             cout << time_diff2.count() << " " << "7\n";
@@ -227,13 +227,13 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
             // time_start = chrono::high_resolution_clock::now();
             vector<vector<Ciphertext>> payloadUnpacked;
             // payloadRetrievalOptimized(payloadUnpacked, payload, bipartite_map, expandedSIC, context, i);
-            payloadRetrievalOptimizedwithWeights(payloadUnpacked, payload, bipartite_map, weights, expandedSIC, context, degree, i, i - counter);
+            payloadRetrievalOptimizedwithWeights(payloadUnpacked, payload, bipartite_map_glb, weights_glb, expandedSIC, context, degree, i, i - counter);
             // time_end = chrono::high_resolution_clock::now();
             // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
             // cout << time_diff.count() << " " << "6\n";
 
             // time_start = chrono::high_resolution_clock::now();
-            payloadPackingOptimized(rhs, payloadUnpacked, bipartite_map, degree, context, gal_keys, i);
+            payloadPackingOptimized(rhs, payloadUnpacked, bipartite_map_glb, degree, context, gal_keys, i);
         }
         
     }
@@ -393,12 +393,14 @@ vector<vector<long>> receiverDecoding(Ciphertext& lhsEnc, vector<vector<int>>& b
     chrono::high_resolution_clock::time_point time_start, time_end;
     chrono::microseconds time_diff;
     time_start = chrono::high_resolution_clock::now();
-
-    bipartite_map.clear();
-    int repeatition = 5;
-    // bipartiteGraphGeneration(bipartite_map,numOfTransactions,100,repeatition,seed);
     vector<vector<int>> weights;
-    bipartiteGraphWeightsGeneration(bipartite_map,weights,numOfTransactions,OMRtwoM,repeatition,seed);
+    bipartiteGraphWeightsGeneration(bipartite_map,weights,numOfTransactions,OMRtwoM,repeatition_glb,seed_glb);
+    // bipartiteGraphGeneration(bipartite_map,numOfTransactions,100,repeatition,seed);
+    cout << "1\n";
+	time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << time_diff.count() << " microseconds for client to gen weights." << "\n";
+        time_start = chrono::high_resolution_clock::now();
 
     // 1. find pertinent indices
     map<int, int> pertinentIndices;
@@ -446,8 +448,8 @@ vector<vector<long>> receiverDecoding(Ciphertext& lhsEnc, vector<vector<int>>& b
     auto newrhs = equationSolving(lhs, rhs, payloadSize);
     cout << "4\n";
 
-    for(size_t i = 0; i < newrhs.size(); i++)
-        cout << newrhs[i] << endl;
+    // for(size_t i = 0; i < newrhs.size(); i++)
+        // cout << newrhs[i] << endl;
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
@@ -558,7 +560,7 @@ void OMR2multi(){
     // int numcores = 4;
     size_t poly_modulus_degree = 32768;
 
-    int numOfTransactions = poly_modulus_degree*16*numcores;
+    int numOfTransactions = poly_modulus_degree*4*numcores;
     createDatabase(numOfTransactions, 306); // one time
     cout << "Finishing createDatabase\n";
 
@@ -572,7 +574,7 @@ void OMR2multi(){
     // general
     vector<PVWCiphertext> SICPVW;
     vector<vector<uint64_t>> payload;
-    auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, numOfTransactions/50, params);
+    auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, numOfTransactions/10, params);
     cout << expected.size() << " pertinent msg: Finishing preparing transactions\n";
 
 
@@ -726,6 +728,8 @@ void OMR2multi(){
     vector<vector<vector<int>>> bipartite_map(numcores);
     vector<int> counter(numcores);
 
+    bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions,OMRtwoM,repeatition_glb,seed_glb);
+
     batchcounter = 0;
     while(batchcounter < num_batches){
     batchcounter++;
@@ -736,6 +740,7 @@ void OMR2multi(){
         auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
         //evaluator.encrypt_zero(rhs);
         int j = 0;
+        counter[i] = numOfTransactions/numcores*i;
         while(payload_multicore[i].size() >= poly_modulus_degree){
             auto tempPayload = vector<vector<uint64_t>>(payload_multicore[i].begin(), payload_multicore[i].begin()+poly_modulus_degree);
             payload_multicore[i].erase(payload_multicore[i].begin(),payload_multicore[i].begin()+poly_modulus_degree);
@@ -762,6 +767,11 @@ void OMR2multi(){
         MemoryManager::SwitchProfile(std::move(old_prof));
     }
     NTL_EXEC_RANGE_END;
+    }
+
+    for(int i = 1; i < numcores; i++){
+        evaluator.add_inplace(lhs_multi[0], lhs_multi[i]);
+        evaluator.add_inplace(rhs_multi[0], rhs_multi[i]);
     }
 
     while(context.last_parms_id() != lhs_multi[0].parms_id()){
