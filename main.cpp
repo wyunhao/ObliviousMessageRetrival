@@ -571,7 +571,6 @@ void OMR2multi(){
     cout << "Finishing generating sk for PVW cts\n";
 
     // step 2. prepare transactions
-    // general
     vector<PVWCiphertext> SICPVW;
     vector<vector<uint64_t>> payload;
     auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, numOfTransactions/10, params);
