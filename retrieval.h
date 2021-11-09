@@ -231,7 +231,8 @@ void payloadRetrievalOptimizedwithWeights(vector<vector<Ciphertext>>& results, c
     Evaluator evaluator(context);
     BatchEncoder batch_encoder(context);
     results.resize(SIC.size());
-    // cout << "!!!" << start << " " << local_start << " " << endl;
+    // cout << "!!!" << payloads.size() << " " << bipartite_map.size() << " " << endl;
+    // cout << "!!!" << payloads[0][0] << " " << bipartite_map[0][0] << " " << endl;
 
     for(size_t i = 0; i < SIC.size(); i++){
         // if((i+start == 9000-8192) || (i+start == 9002-8192)){

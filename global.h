@@ -2,10 +2,10 @@
 using namespace seal;
 
 int numcores = 4;
-int OMRtwoM = 100;
+int OMRtwoM = 50;
 int num_batches = 1;
-int mod_switch_counter = 0;
-GaloisKeys gal_keys_next;
+int mod_switch_counter = 0; 
+GaloisKeys gal_keys_next; 
 GaloisKeys gal_keys_last;
 vector<vector<int>> bipartite_map_glb;
 vector<vector<int>> weights_glb;
