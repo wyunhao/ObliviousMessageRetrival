@@ -23,7 +23,8 @@ vector<uint64_t> decodeIndicesOMD(const Ciphertext& indexPack, const int& num_of
                 pertinentIndices.push_back(counter*degree + i);
             }
             indexPackint[i] >>= 1;
-            counter -= 1;
+            counter += 1;
+            i--;
         } else {
             counter = 0;
         }

@@ -82,6 +82,7 @@ vector<vector<uint64_t>> preparinngTransactionsFormal(PVWsk& sk,
             cout << i << " ";
             PVWEncPK(tempclue, zeros, pk, params);
             ret.push_back(loadDataSingle(i));
+            expectedIndices.push_back(uint64_t(i));
         }
         else
         {
@@ -580,12 +581,185 @@ bool checkRes(vector<vector<uint64_t>> expected, vector<vector<long>> res){
     return true;
 }
 
+void OMDlevelspecificDetectKeySize(){
+    // step 1. generate PVW sk TODO: change to PK
+    // receiver side
+    auto params = PVWParam(450, 65537, 1.3, 16000, 4); 
+    auto sk = PVWGenerateSecretKey(params);
+    cout << "Finishing generating sk for PVW cts\n";
+
+    // step 3. generate detection key
+    // receiver side
+    //chrono::high_resolution_clock::time_point time_start, time_end;
+    //chrono::microseconds time_diff;
+    EncryptionParameters parms(scheme_type::bfv);
+    size_t poly_modulus_degree = 32768;
+    parms.set_poly_modulus_degree(poly_modulus_degree);
+    auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28, 
+                                                                            39, 60, 60, 60, 
+                                                                            60, 60, 60, 60, 60, 60,
+                                                                            32, 30, 60 });
+    parms.set_coeff_modulus(coeff_modulus);
+    parms.set_plain_modulus(65537);
+
+
+	prng_seed_type seed;
+    for (auto &i : seed)
+    {
+        i = random_uint64();
+    }
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    parms.set_random_generator(rng);
+
+    SEALContext context(parms, true, sec_level_type::none);
+    print_parameters(context); //auto qualifiers = context.first_context_data()->qualifiers();
+    KeyGenerator keygen(context);
+    SecretKey secret_key = keygen.secret_key();
+    PublicKey public_key;
+    keygen.create_public_key(public_key);
+    RelinKeys relin_keys;
+    // keygen.create_relin_keys(relin_keys);
+    Encryptor encryptor(context, public_key);
+    Evaluator evaluator(context);
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+    GaloisKeys gal_keys;
+
+    seal::Serializable<PublicKey> pk = keygen.create_public_key();
+	seal::Serializable<RelinKeys> rlk = keygen.create_relin_keys();
+	stringstream streamPK, streamRLK, streamRTK;
+    auto reskeysize = pk.save(streamPK);
+	reskeysize += rlk.save(streamRLK);
+	reskeysize += keygen.create_galois_keys(vector<int>({1})).save(streamRTK);
+
+    public_key.load(context, streamPK);
+    relin_keys.load(context, streamRLK);
+    gal_keys.load(context, streamRTK); //size_t slot_count = batch_encoder.slot_count();
+	vector<seal::Serializable<Ciphertext>>  switchingKeypacked = genSwitchingKeyPVWPacked(context, poly_modulus_degree, public_key, secret_key, sk, params);
+	stringstream data_stream;
+    for(size_t i = 0; i < switchingKeypacked.size(); i++){
+        reskeysize += switchingKeypacked[i].save(data_stream);
+    }
+    cout << "Detection Key Size: " << reskeysize << " bytes" << endl;
+}
+
+void levelspecificDetectKeySize(){
+    // step 1. generate PVW sk TODO: change to PK
+    // receiver side
+    auto params = PVWParam(450, 65537, 1.3, 16000, 4); 
+    auto sk = PVWGenerateSecretKey(params);
+    cout << "Finishing generating sk for PVW cts\n";
+
+    // step 3. generate detection key
+    // receiver side
+    //chrono::high_resolution_clock::time_point time_start, time_end;
+    //chrono::microseconds time_diff;
+    EncryptionParameters parms(scheme_type::bfv);
+    size_t poly_modulus_degree = 32768;
+    auto degree = poly_modulus_degree;
+    parms.set_poly_modulus_degree(poly_modulus_degree);
+    auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28, 
+                                                                            39, 60, 60, 60, 60, 
+                                                                            60, 60, 60, 60, 60, 60,
+                                                                            32, 30, 60 });
+    parms.set_coeff_modulus(coeff_modulus);
+    parms.set_plain_modulus(65537);
+
+
+	prng_seed_type seed;
+    for (auto &i : seed)
+    {
+        i = random_uint64();
+    }
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    parms.set_random_generator(rng);
+
+    SEALContext context(parms, true, sec_level_type::none);
+    print_parameters(context); //auto qualifiers = context.first_context_data()->qualifiers();
+    KeyGenerator keygen(context);
+    SecretKey secret_key = keygen.secret_key();
+    PublicKey public_key;
+    keygen.create_public_key(public_key);
+    RelinKeys relin_keys;
+    // keygen.create_relin_keys(relin_keys);
+    Encryptor encryptor(context, public_key);
+    Evaluator evaluator(context);
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+    GaloisKeys gal_keys;
+
+    vector<int> steps = {0};
+    for(int i = 1; i < 32768/2; i *= 2){
+        steps.push_back(32768/2 - i);
+    }
+
+    stringstream lvlRTK, lvlRTK2;
+    /////////////////////////////////////// Level specific keys
+    vector<Modulus> coeff_modulus_next = coeff_modulus;
+    coeff_modulus_next.erase(coeff_modulus_next.begin() + 3, coeff_modulus_next.end()-1);
+    EncryptionParameters parms_next = parms;
+    parms_next.set_coeff_modulus(coeff_modulus_next);
+    parms_next.set_random_generator(rng);
+    SEALContext context_next = SEALContext(parms_next, true, sec_level_type::none);
+
+    SecretKey sk_next;
+    sk_next.data().resize(coeff_modulus_next.size() * degree);
+    sk_next.parms_id() = context_next.key_parms_id();
+    // This copies RNS components for first two primes.
+    util::set_poly(secret_key.data().data(), degree, coeff_modulus_next.size() - 1, sk_next.data().data());
+    // This copies RNS components for the special prime.
+    util::set_poly(
+        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
+        sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
+    KeyGenerator keygen_next(context_next, sk_next); // Set a secret key.
+    vector<int> steps_next = {0,1};
+    auto reskeysize = keygen_next.create_galois_keys(steps_next).save(lvlRTK);
+        //////////////////////////////////////
+    vector<Modulus> coeff_modulus_last = coeff_modulus;
+    coeff_modulus_last.erase(coeff_modulus_last.begin() + 2, coeff_modulus_last.end()-1);
+    EncryptionParameters parms_last = parms;
+    parms_last.set_coeff_modulus(coeff_modulus_last);
+    parms_last.set_random_generator(rng);
+    SEALContext context_last = SEALContext(parms_last, true, sec_level_type::none);
+
+    SecretKey sk_last;
+    sk_last.data().resize(coeff_modulus_last.size() * degree);
+    sk_last.parms_id() = context_last.key_parms_id();
+    // This copies RNS components for first two primes.
+    util::set_poly(secret_key.data().data(), degree, coeff_modulus_last.size() - 1, sk_last.data().data());
+    // This copies RNS components for the special prime.
+    util::set_poly(
+        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
+        sk_last.data().data() + degree * (coeff_modulus_last.size() - 1));
+    KeyGenerator keygen_last(context_last, sk_last); // Set a secret key.
+    reskeysize += keygen_last.create_galois_keys(steps).save(lvlRTK2);
+    
+    //////////////////////////////////////
+
+    seal::Serializable<PublicKey> pk = keygen.create_public_key();
+	seal::Serializable<RelinKeys> rlk = keygen.create_relin_keys();
+	stringstream streamPK, streamRLK, streamRTK;
+    reskeysize += pk.save(streamPK);
+	reskeysize += rlk.save(streamRLK);
+	reskeysize += keygen.create_galois_keys(vector<int>({1})).save(streamRTK);
+
+    public_key.load(context, streamPK);
+    relin_keys.load(context, streamRLK);
+    gal_keys.load(context, streamRTK); //size_t slot_count = batch_encoder.slot_count();
+	vector<seal::Serializable<Ciphertext>>  switchingKeypacked = genSwitchingKeyPVWPacked(context, poly_modulus_degree, public_key, secret_key, sk, params);
+	stringstream data_stream;
+    for(size_t i = 0; i < switchingKeypacked.size(); i++){
+        reskeysize += switchingKeypacked[i].save(data_stream);
+    }
+    cout << "Detection Key Size: " << reskeysize << " bytes" << endl;
+}
+
 void OMD1p(){
 
-    size_t poly_modulus_degree = 8192;
+    size_t poly_modulus_degree = 32768;
 
-    int numOfTransactions = poly_modulus_degree*numcores;
-    createDatabase(numOfTransactions, 306); // one time
+    int numOfTransactions = 1<<19;
+    createDatabase(numOfTransactions, 306); // one time 
     cout << "Finishing createDatabase\n";
 
     // step 1. generate PVW sk TODO: change to PK
@@ -607,7 +781,7 @@ void OMD1p(){
     EncryptionParameters parms(scheme_type::bfv);
     parms.set_poly_modulus_degree(poly_modulus_degree);
     auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28, 
-                                                                            39, 60, 60, 60, 60, 
+                                                                            39, 60, 60, 60, 
                                                                             60, 60, 60, 60, 60, 60,
                                                                             32, 30, 60 });
     parms.set_coeff_modulus(coeff_modulus);
@@ -708,6 +882,7 @@ void OMD1p(){
                 evaluator.multiply_plain_inplace(packedSICfromPhase1[i][j], plain_matrix);
                 evaluator.add_inplace(res, packedSICfromPhase1[i][j]);
             }
+            determinCounter++;
         }
     }
 
@@ -723,7 +898,23 @@ void OMD1p(){
     auto realres = decodeIndicesOMD(res, numOfTransactions, poly_modulus_degree, secret_key, context);
     cout << realres << endl;
 
-    if(1)
+    bool allflags = true;
+    for(size_t i = 0; i < expectedIndices.size(); i++){
+        bool flag = false;
+        for(size_t j = 0; j < realres.size(); j++){
+            if(expectedIndices[i] == realres[j])
+            {
+                flag = true;
+                break;
+            }
+        }
+        if(!flag){
+            cout << expectedIndices[i] <<" not found" << endl;
+            allflags = false;
+        }
+    }
+
+    if(allflags)
         cout << "Result is correct!" << endl;
     else
         cout << "Overflow" << endl;
@@ -738,7 +929,7 @@ void OMR2(){
 
     size_t poly_modulus_degree = 32768;
 
-    int numOfTransactions = poly_modulus_degree*4*numcores;
+    int numOfTransactions = 1<<19;
     createDatabase(numOfTransactions, 306); // one time
     cout << "Finishing createDatabase\n";
 
@@ -972,7 +1163,7 @@ void OMR3(){
 
     size_t poly_modulus_degree = 8192*4;
 
-    int numOfTransactions = poly_modulus_degree*4*numcores;
+    int numOfTransactions = 1<<19;
     createDatabase(numOfTransactions, 306); // one time
     cout << "Finishing createDatabase\n";
 
@@ -1238,22 +1429,94 @@ void OMR3(){
 
 
 int main(){
-    // testFunc();
-    // testCalIndices();
-    // return 0;
-    // degreeUpToTest();
 
-    // 1. To check compressed detection size
-    // levelspecificDetectKeySize(); 
+    cout << "+------------------------------------+" << endl;
+    cout << "| Demos                              |" << endl;
+    cout << "+------------------------------------+" << endl;
+    cout << "| 1. OMD1p Detection Key Size        |" << endl;
+    cout << "| 2. OMR1p/OMR2p Detection Key Size  |" << endl;
+    cout << "| 3. OMD1p                           |" << endl;
+    cout << "| 4. OMR1p Single Thread             |" << endl;
+    cout << "| 5. OMR2p Single Thread             |" << endl;
+    cout << "| 6. OMR1p Two Threads               |" << endl;
+    cout << "| 7. OMR2p Two Threads               |" << endl;
+    cout << "| 8. OMR1p Four Threads              |" << endl;
+    cout << "| 9. OMR2p Four Threads              |" << endl;
+    cout << "+------------------------------------+" << endl;
 
-    // 3. To run OMR3
-    OMR3();
+    int selection = 0;
+    bool valid = true;
+    do
+    {
+        cout << endl << "> Run demos (1 ~ 9) or exit (0): ";
+        if (!(cin >> selection))
+        {
+            valid = false;
+        }
+        else if (selection < 0 || selection > 5)
+        {
+            valid = false;
+        }
+        else
+        {
+            valid = true;
+        }
+        if (!valid)
+        {
+            cout << "  [Beep~~] valid option: type 0 ~ 9" << endl;
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        }
+    } while (!valid);
 
-    // 2. To run OMR2
-    // OMR2();
+    switch (selection)
+        {
+        case 1:
+            OMDlevelspecificDetectKeySize();
+            break;
 
-    // multi-thread test OMR2
-    // OMR2multi(); 
+        case 2:
+            levelspecificDetectKeySize();
+            break;
 
+        case 3:
+            numcores = 1;
+            OMD1p();
+            break;
+
+        case 4:
+            numcores = 1;
+            OMR2();
+            break;
+
+        case 5:
+            numcores = 1;
+            OMR3();
+            break;
+        
+        case 6:
+            numcores = 2;
+            OMR2();
+            break;
+
+        case 7:
+            numcores = 2;
+            OMR3();
+            break;
+        
+        case 8:
+            numcores = 4;
+            OMR2();
+            break;
+
+        case 9:
+            numcores = 4;
+            OMR3();
+            break;
+
+        case 0:
+            return 0;
+        }
+    
     
 }

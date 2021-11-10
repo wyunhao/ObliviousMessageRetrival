@@ -114,6 +114,36 @@ void genSwitchingKeyPVWPacked(vector<Ciphertext>& switchingKey, const SEALContex
     // MemoryManager::SwitchProfile(std::move(old_prof));
 }
 
+vector<seal::Serializable<Ciphertext>> genSwitchingKeyPVWPacked(const SEALContext& context, const size_t& degree, 
+                         const PublicKey& BFVpk, const SecretKey& BFVsk, const PVWsk& regSk, const PVWParam& params){ // TODOmulti: can be multithreaded easily
+    vector<seal::Serializable<Ciphertext>> switchingKey;
+
+    BatchEncoder batch_encoder(context);
+    Encryptor encryptor(context, BFVpk);
+    encryptor.set_secret_key(BFVsk);
+
+    int tempn = 1;
+    for(tempn = 1; tempn < params.n; tempn *= 2){}
+    for(int j = 0; j < params.ell; j++){
+        vector<uint64_t> skInt(degree);
+        for(size_t i = 0; i < degree; i++){
+            auto tempindex = i%uint64_t(tempn);
+            if(int(tempindex) >= params.n)
+            {
+                skInt[i] = 0;
+            } else {
+                skInt[i] = uint64_t(regSk[j][tempindex].ConvertToInt() % 65537);
+            }
+        }
+        Plaintext plaintext;
+        batch_encoder.encode(skInt, plaintext);
+        switchingKey.push_back(encryptor.encrypt_symmetric(plaintext));
+    }
+
+    return switchingKey;
+}
+
+
 // compute b - as using smaller key
 void computeBplusASPVWOptimized(vector<Ciphertext>& output, \
         const vector<PVWCiphertext>& toPack, vector<Ciphertext>& switchingKey, const GaloisKeys& gal_keys,
