@@ -274,6 +274,8 @@ void evalRangeCheckMemorySavingOptimized(Ciphertext& output, const int& range, c
 void innerSum_inplace(Ciphertext& output, const GaloisKeys& gal_keys, const size_t& degree,
                 const size_t& toCover, const SEALContext& context){
     Evaluator evaluator(context);
+    // chrono::high_resolution_clock::time_point time_start, time_end;
+    // chrono::microseconds time_diff;
     for(size_t i = 1; i < toCover; i*=2){
         Ciphertext temp;
         if(i == degree/2)
@@ -285,8 +287,12 @@ void innerSum_inplace(Ciphertext& output, const GaloisKeys& gal_keys, const size
         else
         {
 		//cout << "innerSum: " <<  degree/2 - i <<endl;
+            // time_start = chrono::high_resolution_clock::now();
             evaluator.rotate_rows(output, i, gal_keys, temp);
             evaluator.add_inplace(output, temp);
+            // time_end = chrono::high_resolution_clock::now();
+            // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+            // cout << "rotate by: " << time_diff.count() << " " << i << "\n";
         }
     }
 }
@@ -323,14 +329,14 @@ void expandSIC(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisK
 	    evaluator.mod_switch_to_next_inplace(expanded[i]);
 
 	    // time_end = chrono::high_resolution_clock::now();
-            // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-            // cout << "expandSIC: " << time_diff.count() << " " << i << "\n";
+        //     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+            // cout << "expandSIC1: " << time_diff.count() << " " << i << "\n";
 
 	    // time_start = chrono::high_resolution_clock::now();
         innerSum_inplace(expanded[i], gal_keys_last, degree, degree, context2); // This is to make future work less, and slowing by less than double for now.
         // time_end = chrono::high_resolution_clock::now();
         // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-        // cout << "expandSIC: " << time_diff.count() << " " << i << "\n\n";
+        // cout << "innersum: " << time_diff.count() << " " << i << "\n\n";
 
 	//innerSum_inplace(expanded[i], gal_keys, degree, 306, context); // 580 bytes, and each slot 2 bytes, so totally 306 slots. Can get up to 1KB
     }

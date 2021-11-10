@@ -179,31 +179,12 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
     Decryptor decryptor(context, sk);
     Evaluator evaluator(context);
 
-    // if(counter != 0){
-    //     if(!lhs.is_ntt_form())
-    //         evaluator.transform_to_ntt_inplace(lhs);
-    //     if(!rhs.is_ntt_form())
-    //         evaluator.transform_to_ntt_inplace(rhs);
-    // }
-
     chrono::high_resolution_clock::time_point time_start, time_end;
-    chrono::microseconds time_diff;
-
-    // 5. generate bipartite graph. in real application, we return only the seed, but in demo, we directly give the graph
-    time_start = chrono::high_resolution_clock::now();
-    // int repeatition = 5;
-    // bipartiteGraphGeneration(bipartite_map,numOfTransactions,100,repeatition,seed);
-    // vector<vector<int>> weights;
-    // bipartiteGraphWeightsGeneration(bipartite_map, weights,numOfTransactions*16,OMRtwoM,repeatition,seed); // numOfTransactions*16 is hardcoded
-    time_end = chrono::high_resolution_clock::now();
-    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << time_diff.count() << " " << "5\n";
+    chrono::microseconds time_diff;;
 
     int step = 32;
     time_start = chrono::high_resolution_clock::now();
-    // while(context.last_parms_id() != packedSIC.parms_id()){
-        // evaluator.mod_switch_to_next_inplace(packedSIC);
-    // }
+    
     for(int i = counter; i < counter+numOfTransactions; i += step){
         if ((i % (degree/2)) == 0){
             // cout << packedSIC.parms_id() << endl;
@@ -308,7 +289,8 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
 
 void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext>& lhsCounter, vector<vector<int>>& bipartite_map, Ciphertext& rhs, SecretKey& sk, // sk just for test
                         Ciphertext& packedSIC, const vector<vector<uint64_t>>& payload, const RelinKeys& relin_keys, const GaloisKeys& gal_keys, const PublicKey& public_key,
-                        const size_t& degree, const SEALContext& context, const PVWParam& params, const int numOfTransactions, size_t counter = 0, const int payloadSize = 306){
+                        const size_t& degree, const SEALContext& context, const SEALContext& context2, const PVWParam& params, const int numOfTransactions, 
+                        int& counter, const int payloadSize = 306, int seed = 3){
 
     Decryptor decryptor(context, sk);
     Evaluator evaluator(context);
@@ -317,22 +299,22 @@ void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext
     chrono::microseconds time_diff;
 
     // 5. generate bipartite graph. in real application, we return only the seed, but in demo, we directly give the graph
-    time_start = chrono::high_resolution_clock::now();
-    int repeatition = 5;
-    int seed = 3;
-    // bipartiteGraphGeneration(bipartite_map,numOfTransactions,20,repeatition,seed);
-    bipartite_map.clear();
-    vector<vector<int>> weights;
-    bipartiteGraphWeightsGeneration(bipartite_map, weights,numOfTransactions,20,repeatition,seed);
-    time_end = chrono::high_resolution_clock::now();
-    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    // time_start = chrono::high_resolution_clock::now();
+    // int repeatition = 5;
+    // int seed = 3;
+    // // bipartiteGraphGeneration(bipartite_map,numOfTransactions,20,repeatition,seed);
+    // bipartite_map.clear();
+    // vector<vector<int>> weights;
+    // bipartiteGraphWeightsGeneration(bipartite_map, weights,numOfTransactions,20,repeatition,seed);
+    // time_end = chrono::high_resolution_clock::now();
+    // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "5\n";
 
     time_start = chrono::high_resolution_clock::now();
     int step = 32;
     // size_t counter = 0;
-    for(int i = 0; i < numOfTransactions; i += step){
-        if (1){
+    for(int i = counter; i < counter+numOfTransactions; i += step){
+        if ((i % (degree/2)) == 0){
             cout << i <<" " << numOfTransactions << endl;
             // cout << packedSIC.parms_id() << endl;
             chrono::high_resolution_clock::time_point time_start2, time_end2;
@@ -341,58 +323,53 @@ void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext
             // 3 4 6 7. expand SIC; retrieve indices; retrieve payloads, shift the payload according to the graph; payload paking
             time_start2 = chrono::high_resolution_clock::now();
             vector<Ciphertext> expandedSIC;
-            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, context, step, i);
+            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, context2, step, i-counter);
             time_end2 = chrono::high_resolution_clock::now();
             time_diff2 = chrono::duration_cast<chrono::microseconds>(time_end2 - time_start2);
             cout << time_diff2.count() << " " << "3\n";
             // cout << expandedSIC[0].parms_id() << endl;
+
+            for(size_t j = 0; j < expandedSIC.size(); j++)
+                if(!expandedSIC[j].is_ntt_form())
+                    evaluator.transform_to_ntt_inplace(expandedSIC[j]);
     
             time_start2 = chrono::high_resolution_clock::now();
             vector<vector<Ciphertext>> payloadUnpacked;
             // payloadRetrievalOptimized(payloadUnpacked, payload, bipartite_map, expandedSIC, context, i);
-            payloadRetrievalOptimizedwithWeights(payloadUnpacked, payload, bipartite_map, weights, expandedSIC, context, i);
+            payloadRetrievalOptimizedwithWeights(payloadUnpacked, payload, bipartite_map_glb, weights_glb, expandedSIC, context, degree, i, i-counter);
             time_end2 = chrono::high_resolution_clock::now();
             time_diff2 = chrono::duration_cast<chrono::microseconds>(time_end2 - time_start2);
             cout << time_diff2.count() << " " << "6\n";
     
             time_start2 = chrono::high_resolution_clock::now();
-            payloadPackingOptimized(rhs, payloadUnpacked, bipartite_map, degree, context, gal_keys, i);
+            payloadPackingOptimized(rhs, payloadUnpacked, bipartite_map_glb, degree, context, gal_keys, i);
             time_end2 = chrono::high_resolution_clock::now();
             time_diff2 = chrono::duration_cast<chrono::microseconds>(time_end2 - time_start2);
             cout << time_diff2.count() << " " << "7\n";
 
             time_start2 = chrono::high_resolution_clock::now();
-            randomizedIndexRetrieval(lhs, lhsCounter, expandedSIC, context, public_key, counter, degree, 5);
+            randomizedIndexRetrieval(lhs, lhsCounter, expandedSIC, context2, public_key, i, degree, C_glb);
             time_end2 = chrono::high_resolution_clock::now();
             time_diff2 = chrono::duration_cast<chrono::microseconds>(time_end2 - time_start2);
             cout << time_diff2.count() << " " << "4\n";
             // cout << lhs[0].parms_id() << endl;
         } else {
-            // cout << i <<" " << numOfTransactions << endl;
-            // 3 4 6 7. expand SIC; retrieve indices; retrieve payloads, shift the payload according to the graph; payload paking
-            // time_start = chrono::high_resolution_clock::now();
             vector<Ciphertext> expandedSIC;
-            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, context, step, i);
-            // time_end = chrono::high_resolution_clock::now();
-            // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-            // cout << time_diff.count() << " " << "3\n";
+            expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, context2, step, i-counter);
+            
 
-            // time_start = chrono::high_resolution_clock::now();
+            for(size_t j = 0; j < expandedSIC.size(); j++)
+                if(!expandedSIC[j].is_ntt_form())
+                    evaluator.transform_to_ntt_inplace(expandedSIC[j]);
+    
             vector<vector<Ciphertext>> payloadUnpacked;
             // payloadRetrievalOptimized(payloadUnpacked, payload, bipartite_map, expandedSIC, context, i);
-            payloadRetrievalOptimizedwithWeights(payloadUnpacked, payload, bipartite_map, weights, expandedSIC, context, i);
-            // time_end = chrono::high_resolution_clock::now();
-            // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-            // cout << time_diff.count() << " " << "6\n";
-
-            // time_start = chrono::high_resolution_clock::now();
-            payloadPackingOptimized(rhs, payloadUnpacked, bipartite_map, degree, context, gal_keys, i);
-
-            // time_start = chrono::high_resolution_clock::now();
-            randomizedIndexRetrieval(lhs, lhsCounter, expandedSIC, context, public_key, counter, degree, 5);
-            // time_end = chrono::high_resolution_clock::now();
-            // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-            // cout << time_diff.count() << " " << "4\n";
+            payloadRetrievalOptimizedwithWeights(payloadUnpacked, payload, bipartite_map_glb, weights_glb, expandedSIC, context, degree, i, i-counter);
+            
+    
+            payloadPackingOptimized(rhs, payloadUnpacked, bipartite_map_glb, degree, context, gal_keys, i);
+            
+            randomizedIndexRetrieval(lhs, lhsCounter, expandedSIC, context2, public_key, i, degree, C_glb);
         }
         
     }
@@ -401,20 +378,25 @@ void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext
             evaluator.transform_from_ntt_inplace(lhs[i][1]);
             evaluator.transform_from_ntt_inplace(lhsCounter[i]);
     }
+    if(rhs.is_ntt_form())
+        evaluator.transform_from_ntt_inplace(rhs);
     
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
     cout << time_diff.count() << " " << "7\n";
 
-    while(context.last_parms_id() != rhs.parms_id()){
-        // cout << '?' << endl;
-        for(size_t i = 0; i < lhs.size(); i++){
-            for(size_t j = 0; j < lhs[i].size(); j++)
-                evaluator.mod_switch_to_next_inplace(lhs[i][j]);
-            evaluator.mod_switch_to_next_inplace(lhsCounter[i]);
-        }
-        evaluator.mod_switch_to_next_inplace(rhs);
-    }
+    counter += numOfTransactions;
+    cout << counter << endl;
+
+    // while(context.last_parms_id() != rhs.parms_id()){
+    //     // cout << '?' << endl;
+    //     for(size_t i = 0; i < lhs.size(); i++){
+    //         for(size_t j = 0; j < lhs[i].size(); j++)
+    //             evaluator.mod_switch_to_next_inplace(lhs[i][j]);
+    //         evaluator.mod_switch_to_next_inplace(lhsCounter[i]);
+    //     }
+    //     evaluator.mod_switch_to_next_inplace(rhs);
+    // }
     //for(int i = 0; i < 2; i++){
     //    evaluator.mod_switch_to_next_inplace(rhs);
     //    evaluator.mod_switch_to_next_inplace(lhs);
@@ -491,7 +473,7 @@ vector<vector<long>> receiverDecoding(Ciphertext& lhsEnc, vector<vector<int>>& b
     cout << "4\n";
 
     // for(size_t i = 0; i < newrhs.size(); i++)
-        // cout << newrhs[i] << endl;
+        // cout << newrhs[i] << endl; 
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
@@ -504,15 +486,16 @@ vector<vector<long>> receiverDecodingOMR3(vector<vector<Ciphertext>>& lhsEnc, ve
                         const size_t& degree, const SecretKey& secret_key, const SEALContext& context, const int numOfTransactions, int seed = 3,
                         const int payloadUpperBound = 306, const int payloadSize = 306){
 
+    Decryptor decryptor(context, secret_key);
+    cout << decryptor.invariant_noise_budget(lhsEnc[0][0]) << " bits left, receiver" << endl;
+    cout << decryptor.invariant_noise_budget(rhsEnc) << " bits left, receiver" << endl;
+
     chrono::high_resolution_clock::time_point time_start, time_end;
     chrono::microseconds time_diff;
 
     time_start = chrono::high_resolution_clock::now();
-    bipartite_map.clear();
-    int repeatition = 5;
-    // bipartiteGraphGeneration(bipartite_map,numOfTransactions,20,repeatition,seed);
     vector<vector<int>> weights;
-    bipartiteGraphWeightsGeneration(bipartite_map,weights,numOfTransactions,20,repeatition,seed);
+    bipartiteGraphWeightsGeneration(bipartite_map,weights,numOfTransactions,OMRthreeM,repeatition_glb,seed_glb);
     cout << "0\n";
 	time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
@@ -538,7 +521,7 @@ vector<vector<long>> receiverDecodingOMR3(vector<vector<Ciphertext>>& lhsEnc, ve
 
     // 2. forming rhs
     vector<vector<int>> rhs;
-    formRhs(rhs, rhsEnc, secret_key, degree, context, 20);
+    formRhs(rhs, rhsEnc, secret_key, degree, context, OMRthreeM);
     cout << "2\n";
 
 	time_end = chrono::high_resolution_clock::now();
@@ -549,7 +532,7 @@ vector<vector<long>> receiverDecodingOMR3(vector<vector<Ciphertext>>& lhsEnc, ve
     // 3. forming lhs
     vector<vector<int>> lhs;
     // formLhs(lhs, pertinentIndices, bipartite_map, 0, 20);
-    formLhsWeights(lhs, pertinentIndices, bipartite_map, weights, 0, 20);
+    formLhsWeights(lhs, pertinentIndices, bipartite_map, weights, 0, OMRthreeM);
     cout << "3\n";
 
 	time_end = chrono::high_resolution_clock::now();
@@ -561,8 +544,8 @@ vector<vector<long>> receiverDecodingOMR3(vector<vector<Ciphertext>>& lhsEnc, ve
     auto newrhs = equationSolving(lhs, rhs, payloadSize);
     cout << "4\n";
 
-    for(size_t i = 0; i < newrhs.size(); i++)
-        cout << newrhs[i] << endl;
+    // for(size_t i = 0; i < newrhs.size(); i++)
+    //     cout << newrhs[i] << endl;
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
@@ -597,10 +580,9 @@ bool checkRes(vector<vector<uint64_t>> expected, vector<vector<long>> res){
     return true;
 }
 
-void OMR2multi(){
+void OMD1p(){
 
-    // int numcores = 4;
-    size_t poly_modulus_degree = 8192*4;
+    size_t poly_modulus_degree = 8192;
 
     int numOfTransactions = poly_modulus_degree*numcores;
     createDatabase(numOfTransactions, 306); // one time
@@ -613,9 +595,7 @@ void OMR2multi(){
     cout << "Finishing generating sk for PVW cts\n";
 
     // step 2. prepare transactions
-    vector<PVWCiphertext> SICPVW;
-    vector<vector<uint64_t>> payload;
-    auto expected = preparinngTransactions(SICPVW, payload, sk, numOfTransactions, numOfTransactions/10, params);
+    auto expected = preparinngTransactionsFormal(sk, numOfTransactions, 50, params);
     cout << expected.size() << " pertinent msg: Finishing preparing transactions\n";
 
 
@@ -625,7 +605,6 @@ void OMR2multi(){
     //chrono::high_resolution_clock::time_point time_start, time_end;
     //chrono::microseconds time_diff;
     EncryptionParameters parms(scheme_type::bfv);
-    auto degree = poly_modulus_degree;
     parms.set_poly_modulus_degree(poly_modulus_degree);
     auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28, 
                                                                             39, 60, 60, 60, 60, 
@@ -667,10 +646,7 @@ void OMR2multi(){
     
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
-    for(int i = 0; i < numcores; i++){
-        SICPVW_multicore[i] = vector<PVWCiphertext>(SICPVW.begin()+i*numOfTransactions/numcores, SICPVW.begin()+(i+1)*numOfTransactions/numcores);
-        payload_multicore[i] = vector<vector<uint64_t>>(payload.begin()+i*numOfTransactions/numcores, payload.begin()+(i+1)*numOfTransactions/numcores);
-    }
+    vector<int> counter(numcores);
 
     GaloisKeys gal_keys;
     vector<int> stepsfirst = {1};
@@ -684,47 +660,6 @@ void OMR2multi(){
     // keygen.create_galois_keys(steps, gal_keys);
 
     cout << "Finishing generating detection keys\n";
-
-    /////////////////////////////////////// Level specific keys
-    vector<Modulus> coeff_modulus_next = coeff_modulus;
-    coeff_modulus_next.erase(coeff_modulus_next.begin() + 4, coeff_modulus_next.end()-1);
-    EncryptionParameters parms_next = parms;
-    parms_next.set_coeff_modulus(coeff_modulus_next);
-    SEALContext context_next = SEALContext(parms_next, true, sec_level_type::none);
-
-    SecretKey sk_next;
-    sk_next.data().resize(coeff_modulus_next.size() * degree);
-    sk_next.parms_id() = context_next.key_parms_id();
-    // This copies RNS components for first two primes.
-    util::set_poly(secret_key.data().data(), degree, coeff_modulus_next.size() - 1, sk_next.data().data());
-    // This copies RNS components for the special prime.
-    util::set_poly(
-        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
-        sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
-    // cout << "!!!---" << endl;
-    KeyGenerator keygen_next(context_next, sk_next); // Set a secret key.
-    vector<int> steps_next = {0,1};
-    keygen_next.create_galois_keys(steps_next, gal_keys_next);
-        //////////////////////////////////////
-    vector<Modulus> coeff_modulus_last = coeff_modulus;
-    coeff_modulus_last.erase(coeff_modulus_last.begin() + 2, coeff_modulus_last.end()-1);
-    EncryptionParameters parms_last = parms;
-    parms_last.set_coeff_modulus(coeff_modulus_last);
-    SEALContext context_last = SEALContext(parms_last, true, sec_level_type::none);
-
-    SecretKey sk_last;
-    sk_last.data().resize(coeff_modulus_last.size() * degree);
-    sk_last.parms_id() = context_last.key_parms_id();
-    // This copies RNS components for first two primes.
-    util::set_poly(secret_key.data().data(), degree, coeff_modulus_last.size() - 1, sk_last.data().data());
-    // This copies RNS components for the special prime.
-    util::set_poly(
-        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
-        sk_last.data().data() + degree * (coeff_modulus_last.size() - 1));
-    KeyGenerator keygen_last(context_last, sk_last); // Set a secret key.
-    keygen_last.create_galois_keys(steps, gal_keys_last);
-    
-    //////////////////////////////////////
 
     vector<vector<Ciphertext>> packedSICfromPhase1(numcores,vector<Ciphertext>(numOfTransactions/numcores/poly_modulus_degree)); // Assume numOfTransactions/numcores/poly_modulus_degree is integer, pad if needed
 
@@ -742,83 +677,42 @@ void OMR2multi(){
     auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
     NTL_EXEC_RANGE(numcores, first, last);
     for(int i = first; i < last; i++){
-        // std::chrono::seconds dura(15*i);
-        // std::this_thread::sleep_for( dura );
-        // cout << "!!! " << i << endl;
-        int j = 0;
-        while(SICPVW_multicore[i].size() >= poly_modulus_degree){
-            auto tempSICPVW = vector<PVWCiphertext>(SICPVW_multicore[i].begin(), SICPVW_multicore[i].begin()+poly_modulus_degree);
-            SICPVW_multicore[i].erase(SICPVW_multicore[i].begin(),SICPVW_multicore[i].begin()+poly_modulus_degree);
-            packedSICfromPhase1[i][j] = serverOperations1obtainPackedSIC(secret_key, tempSICPVW, switchingKey, relin_keys, gal_keys,
+        counter[i] = numOfTransactions/numcores*i;
+        
+        size_t j = 0;
+        while(j < numOfTransactions/numcores/poly_modulus_degree){
+            // cout << j << endl;
+            loadClues(SICPVW_multicore[i], counter[i], counter[i]+poly_modulus_degree, params);
+            packedSICfromPhase1[i][j] = serverOperations1obtainPackedSIC(secret_key, SICPVW_multicore[i], switchingKey, relin_keys, gal_keys,
                                                             poly_modulus_degree, context, params, poly_modulus_degree);
             j++;
+            counter[i] += poly_modulus_degree;
+            SICPVW_multicore[i].clear();
         }
         
     }
     NTL_EXEC_RANGE_END;
     MemoryManager::SwitchProfile(std::move(old_prof));
     }
-    
-    // MemoryManager::SwitchProfile(std::move(old_prof));
-    
-    // packedSIC = packedSICfromPhase1[0];
-    // }
 
-    // step 4. detector operations
-    vector<Ciphertext> lhs_multi(numcores), rhs_multi(numcores);
-    vector<vector<vector<int>>> bipartite_map(numcores);
-    vector<int> counter(numcores);
-
-    bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions,OMRtwoM,repeatition_glb,seed_glb);
-
-    batchcounter = 0;
-    while(batchcounter < num_batches){
-    batchcounter++;
-    // cout << "Phase 2-3, batch " << batchcounter << " for 4 cores" << endl;
-    NTL_EXEC_RANGE(numcores, first, last);
-    for(int i = first; i < last; i++){
-        MemoryPoolHandle my_pool = MemoryPoolHandle::New();
-        auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
-        //evaluator.encrypt_zero(rhs);
-        int j = 0;
-        counter[i] = numOfTransactions/numcores*i;
-        while(payload_multicore[i].size() >= poly_modulus_degree){
-            auto tempPayload = vector<vector<uint64_t>>(payload_multicore[i].begin(), payload_multicore[i].begin()+poly_modulus_degree);
-            payload_multicore[i].erase(payload_multicore[i].begin(),payload_multicore[i].begin()+poly_modulus_degree);
-            // if(j++ == 0)
-                // continue;
-            // j = 1;
-            // counter[i] = 8192;
-            cout << "main! " << counter[i] << endl;
-            Ciphertext templhs, temprhs;
-            serverOperations2therest(templhs, bipartite_map[i], temprhs, sk_next,
-                            packedSICfromPhase1[i][j], tempPayload, relin_keys, gal_keys_next,
-                            poly_modulus_degree, context_next, context_last, params, poly_modulus_degree, counter[i]);
-            if(j == 0){
-                lhs_multi[i] = templhs;
-                rhs_multi[i] = temprhs;
+    int determinCounter = 0;
+    Ciphertext res;
+    for(size_t i = 0; i < packedSICfromPhase1.size(); i++){
+        for(size_t j = 0; j < packedSICfromPhase1[i].size(); j++){
+            Plaintext plain_matrix;
+            vector<uint64_t> pod_matrix(poly_modulus_degree, 1 << determinCounter); 
+            batch_encoder.encode(pod_matrix, plain_matrix);
+            if((i == 0) && (j == 0)){
+                evaluator.multiply_plain(packedSICfromPhase1[i][j], plain_matrix, res);
             } else {
-                evaluator.add_inplace(lhs_multi[i], templhs);
-                evaluator.add_inplace(rhs_multi[i], temprhs);
+                evaluator.multiply_plain_inplace(packedSICfromPhase1[i][j], plain_matrix);
+                evaluator.add_inplace(res, packedSICfromPhase1[i][j]);
             }
-            j++;
-            // break;
         }
-        
-        MemoryManager::SwitchProfile(std::move(old_prof));
-    }
-    NTL_EXEC_RANGE_END;
     }
 
-    for(int i = 1; i < numcores; i++){
-        evaluator.add_inplace(lhs_multi[0], lhs_multi[i]);
-        evaluator.add_inplace(rhs_multi[0], rhs_multi[i]);
-    }
-
-    while(context.last_parms_id() != lhs_multi[0].parms_id()){
-            cout << "!" << endl;
-            evaluator.mod_switch_to_next_inplace(rhs_multi[0]);
-            evaluator.mod_switch_to_next_inplace(lhs_multi[0]);
+    while(context.last_parms_id() != res.parms_id()){
+            evaluator.mod_switch_to_next_inplace(res);
         }
 
     time_end = chrono::high_resolution_clock::now();
@@ -826,10 +720,10 @@ void OMR2multi(){
     cout << time_diff.count() << "us for detector totol time." << "\n";
 
     // step 5. receiver decoding
-    auto res = receiverDecoding(lhs_multi[0], bipartite_map[0], rhs_multi[0],
-                        poly_modulus_degree, secret_key, context, numOfTransactions);
+    auto realres = decodeIndicesOMD(res, numOfTransactions, poly_modulus_degree, secret_key, context);
+    cout << realres << endl;
 
-    if(checkRes(expected, res))
+    if(1)
         cout << "Result is correct!" << endl;
     else
         cout << "Overflow" << endl;
@@ -842,9 +736,9 @@ void OMR2multi(){
 
 void OMR2(){
 
-    size_t poly_modulus_degree = 8192*2;
+    size_t poly_modulus_degree = 32768;
 
-    int numOfTransactions = poly_modulus_degree*2*numcores;
+    int numOfTransactions = poly_modulus_degree*4*numcores;
     createDatabase(numOfTransactions, 306); // one time
     cout << "Finishing createDatabase\n";
 
@@ -855,7 +749,7 @@ void OMR2(){
     cout << "Finishing generating sk for PVW cts\n";
 
     // step 2. prepare transactions
-    auto expected = preparinngTransactionsFormal(sk, numOfTransactions, 20, params);
+    auto expected = preparinngTransactionsFormal(sk, numOfTransactions, 50, params);
     cout << expected.size() << " pertinent msg: Finishing preparing transactions\n";
 
 
@@ -1074,6 +968,274 @@ void OMR2(){
     
 }
 
+void OMR3(){
+
+    size_t poly_modulus_degree = 8192*4;
+
+    int numOfTransactions = poly_modulus_degree*4*numcores;
+    createDatabase(numOfTransactions, 306); // one time
+    cout << "Finishing createDatabase\n";
+
+    // step 1. generate PVW sk TODO: change to PK
+    // receiver side
+    auto params = PVWParam(450, 65537, 1.3, 16000, 4); 
+    auto sk = PVWGenerateSecretKey(params);
+    cout << "Finishing generating sk for PVW cts\n";
+
+    // step 2. prepare transactions
+    auto expected = preparinngTransactionsFormal(sk, numOfTransactions, 50, params);
+    cout << expected.size() << " pertinent msg: Finishing preparing transactions\n";
+
+
+
+    // step 3. generate detection key
+    // receiver side
+    //chrono::high_resolution_clock::time_point time_start, time_end;
+    //chrono::microseconds time_diff;
+    EncryptionParameters parms(scheme_type::bfv);
+    auto degree = poly_modulus_degree;
+    parms.set_poly_modulus_degree(poly_modulus_degree);
+    auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28, 
+                                                                            39, 60, 60, 60, 60, 
+                                                                            60, 60, 60, 60, 60, 60,
+                                                                            32, 30, 60 });
+    parms.set_coeff_modulus(coeff_modulus);
+    parms.set_plain_modulus(65537);
+
+
+	prng_seed_type seed;
+    for (auto &i : seed)
+    {
+        i = random_uint64();
+    }
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    parms.set_random_generator(rng);
+
+    SEALContext context(parms, true, sec_level_type::none);
+    print_parameters(context); //auto qualifiers = context.first_context_data()->qualifiers();
+    KeyGenerator keygen(context);
+    SecretKey secret_key = keygen.secret_key();
+    PublicKey public_key;
+    keygen.create_public_key(public_key);
+    RelinKeys relin_keys;
+    keygen.create_relin_keys(relin_keys);
+    Encryptor encryptor(context, public_key);
+    Evaluator evaluator(context);
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+
+
+    vector<Ciphertext> switchingKey;
+    Ciphertext packedSIC;
+    // {
+        // MemoryPoolHandle my_pool = MemoryPoolHandle::New();
+        // auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
+    switchingKey.resize(params.ell);
+    genSwitchingKeyPVWPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, sk, params);
+    
+    vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
+    vector<vector<vector<uint64_t>>> payload_multicore(numcores);
+    vector<int> counter(numcores);
+
+    GaloisKeys gal_keys;
+    vector<int> stepsfirst = {1};
+    keygen.create_galois_keys(stepsfirst, gal_keys);
+
+    /////////////////////////////////////////////////////////////// Rot Key gen
+    vector<int> steps = {0};
+    for(int i = 1; i < int(poly_modulus_degree/2); i *= 2){
+	    steps.push_back(i);
+    }
+    // keygen.create_galois_keys(steps, gal_keys);
+
+    cout << "Finishing generating detection keys\n";
+
+    /////////////////////////////////////// Level specific keys
+    vector<Modulus> coeff_modulus_next = coeff_modulus;
+    coeff_modulus_next.erase(coeff_modulus_next.begin() + 4, coeff_modulus_next.end()-1);
+    EncryptionParameters parms_next = parms;
+    parms_next.set_coeff_modulus(coeff_modulus_next);
+    SEALContext context_next = SEALContext(parms_next, true, sec_level_type::none);
+
+    SecretKey sk_next;
+    sk_next.data().resize(coeff_modulus_next.size() * degree);
+    sk_next.parms_id() = context_next.key_parms_id();
+    // This copies RNS components for first two primes.
+    util::set_poly(secret_key.data().data(), degree, coeff_modulus_next.size() - 1, sk_next.data().data());
+    // This copies RNS components for the special prime.
+    util::set_poly(
+        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
+        sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
+    // cout << "!!!---" << endl;
+    KeyGenerator keygen_next(context_next, sk_next); // Set a secret key.
+    vector<int> steps_next = {0,1};
+    keygen_next.create_galois_keys(steps_next, gal_keys_next);
+        //////////////////////////////////////
+    vector<Modulus> coeff_modulus_last = coeff_modulus;
+    coeff_modulus_last.erase(coeff_modulus_last.begin() + 2, coeff_modulus_last.end()-1);
+    EncryptionParameters parms_last = parms;
+    parms_last.set_coeff_modulus(coeff_modulus_last);
+    SEALContext context_last = SEALContext(parms_last, true, sec_level_type::none);
+
+    SecretKey sk_last;
+    sk_last.data().resize(coeff_modulus_last.size() * degree);
+    sk_last.parms_id() = context_last.key_parms_id();
+    // This copies RNS components for first two primes.
+    util::set_poly(secret_key.data().data(), degree, coeff_modulus_last.size() - 1, sk_last.data().data());
+    // This copies RNS components for the special prime.
+    util::set_poly(
+        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
+        sk_last.data().data() + degree * (coeff_modulus_last.size() - 1));
+    KeyGenerator keygen_last(context_last, sk_last); // Set a secret key.
+    keygen_last.create_galois_keys(steps, gal_keys_last);
+    PublicKey public_key_last;
+    keygen_last.create_public_key(public_key_last);
+    
+    //////////////////////////////////////
+
+    vector<vector<Ciphertext>> packedSICfromPhase1(numcores,vector<Ciphertext>(numOfTransactions/numcores/poly_modulus_degree)); // Assume numOfTransactions/numcores/poly_modulus_degree is integer, pad if needed
+
+    NTL::SetNumThreads(numcores);
+    int batchcounter = 0;
+
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    chrono::microseconds time_diff;
+    time_start = chrono::high_resolution_clock::now();
+
+    while(batchcounter < num_batches){
+    batchcounter++;
+    // cout << "Phase 1, batch " << batchcounter << " for 4 cores" << endl;
+    MemoryPoolHandle my_pool = MemoryPoolHandle::New();
+    auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
+    NTL_EXEC_RANGE(numcores, first, last);
+    for(int i = first; i < last; i++){
+        counter[i] = numOfTransactions/numcores*i;
+        
+        size_t j = 0;
+        while(j < numOfTransactions/numcores/poly_modulus_degree){
+            // cout << j << endl;
+            loadClues(SICPVW_multicore[i], counter[i], counter[i]+poly_modulus_degree, params);
+            packedSICfromPhase1[i][j] = serverOperations1obtainPackedSIC(secret_key, SICPVW_multicore[i], switchingKey, relin_keys, gal_keys,
+                                                            poly_modulus_degree, context, params, poly_modulus_degree);
+            j++;
+            counter[i] += poly_modulus_degree;
+            SICPVW_multicore[i].clear();
+        }
+        
+    }
+    NTL_EXEC_RANGE_END;
+    MemoryManager::SwitchProfile(std::move(old_prof));
+    }
+    
+    // MemoryManager::SwitchProfile(std::move(old_prof));
+    
+    // packedSIC = packedSICfromPhase1[0];
+    // }
+
+    // step 4. detector operations
+    vector<vector<vector<Ciphertext>>> lhs_multi(numcores);
+    vector<vector<Ciphertext>> lhs_multi_ctr(numcores);
+    vector<Ciphertext> rhs_multi(numcores);
+    vector<vector<vector<int>>> bipartite_map(numcores);
+
+    bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions,OMRtwoM,repeatition_glb,seed_glb);
+
+    batchcounter = 0;
+    while(batchcounter < num_batches){
+    batchcounter++;
+    // cout << "Phase 2-3, batch " << batchcounter << " for 4 cores" << endl;
+    NTL_EXEC_RANGE(numcores, first, last);
+    for(int i = first; i < last; i++){
+        MemoryPoolHandle my_pool = MemoryPoolHandle::New();
+        auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
+        size_t j = 0;
+        counter[i] = numOfTransactions/numcores*i;
+
+        while(j < numOfTransactions/numcores/poly_modulus_degree){
+            // cout << "here1" << payload_multicore[i].size() << endl;
+            loadData(payload_multicore[i], counter[i], counter[i]+poly_modulus_degree);
+            // cout << "here2" << payload_multicore[i].size() << endl;
+            vector<vector<Ciphertext>> templhs;
+            vector<Ciphertext> templhsctr;
+            Ciphertext temprhs;
+            serverOperations3therest(templhs, templhsctr, bipartite_map[i], temprhs, sk_next,
+                            packedSICfromPhase1[i][j], payload_multicore[i], relin_keys, gal_keys_next, public_key_last,
+                            poly_modulus_degree, context_next, context_last, params, poly_modulus_degree, counter[i]);
+            if(j == 0){
+                lhs_multi[i] = templhs;
+                lhs_multi_ctr[i] = templhsctr;
+                rhs_multi[i] = temprhs;
+            } else {
+                for(size_t q = 0; q < lhs_multi[i].size(); q++){
+                    // cout << q << " " << lhs_multi[i].size() << " " << templhs.size() << endl;
+                    for(size_t w = 0; w < lhs_multi[i][q].size(); w++){
+                        // cout << w << " " << lhs_multi[i][q].size() << " " << templhs[i][q].size() << endl;
+                        evaluator.add_inplace(lhs_multi[i][q][w], templhs[q][w]);
+                    }
+                }
+                for(size_t q = 0; q < lhs_multi_ctr[i].size(); q++){
+                    // cout << q << " " << lhs_multi_ctr[i].size() << " " << templhsctr[i].size() << endl;
+                    evaluator.add_inplace(lhs_multi_ctr[i][q], templhsctr[q]);
+                }
+                evaluator.add_inplace(rhs_multi[i], temprhs);
+            }
+            j++;
+            payload_multicore[i].clear();
+            // break;
+        }
+        
+        MemoryManager::SwitchProfile(std::move(old_prof));
+    }
+    NTL_EXEC_RANGE_END;
+    }
+    // cout << "???" << endl;
+
+    for(int i = 1; i < numcores; i++){
+        for(size_t q = 0; q < lhs_multi[i].size(); q++){
+            for(size_t w = 0; w < lhs_multi[i][q].size(); w++){
+                evaluator.add_inplace(lhs_multi[0][q][w], lhs_multi[i][q][w]);
+            }
+        }
+        for(size_t q = 0; q < lhs_multi_ctr[i].size(); q++){
+            evaluator.add_inplace(lhs_multi_ctr[0][q], lhs_multi_ctr[i][q]);
+        }
+        evaluator.add_inplace(rhs_multi[0], rhs_multi[i]);
+    }
+
+    // cout << "???" << endl;
+
+    while(context.last_parms_id() != lhs_multi[0][0][0].parms_id()){
+            // cout << "!" << endl;
+            for(size_t q = 0; q < lhs_multi[0].size(); q++){
+                for(size_t w = 0; w < lhs_multi[0][q].size(); w++){
+                    evaluator.mod_switch_to_next_inplace(lhs_multi[0][q][w]);
+                }
+            }
+            for(size_t q = 0; q < lhs_multi_ctr[0].size(); q++){
+                evaluator.mod_switch_to_next_inplace(lhs_multi_ctr[0][q]);
+            }
+            evaluator.mod_switch_to_next_inplace(rhs_multi[0]);
+        }
+
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << time_diff.count() << "us for detector totol time." << "\n";
+
+    // step 5. receiver decoding
+    auto res = receiverDecodingOMR3(lhs_multi[0], lhs_multi_ctr[0], bipartite_map[0], rhs_multi[0],
+                        poly_modulus_degree, secret_key, context, numOfTransactions);
+
+    if(checkRes(expected, res))
+        cout << "Result is correct!" << endl;
+    else
+        cout << "Overflow" << endl;
+    
+    for(size_t i = 0; i < res.size(); i++){
+
+    }
+    
+}
+
 
 int main(){
     // testFunc();
@@ -1085,10 +1247,10 @@ int main(){
     // levelspecificDetectKeySize(); 
 
     // 3. To run OMR3
-    // OMR3();
+    OMR3();
 
     // 2. To run OMR2
-    OMR2();
+    // OMR2();
 
     // multi-thread test OMR2
     // OMR2multi(); 

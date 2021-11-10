@@ -51,7 +51,7 @@ void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Cipher
 }
 
 void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector<Ciphertext>& indexCounters, vector<Ciphertext>& SIC, const SEALContext& context, 
-                                        const PublicKey& BFVpk, size_t& counter, const size_t& degree, size_t C){ // counter is used to optimize memory use, not needed for now
+                                        const PublicKey& BFVpk, int counter, const size_t& degree, size_t C){ // counter is used to optimize memory use, not needed for now
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
     Encryptor encryptor(context, BFVpk);
@@ -62,7 +62,7 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
     //     evaluator.mod_switch_to_next_inplace(SIC[i]);
     // }
 
-    if(counter == 0){ // first msg
+    if((counter%degree) == 0){ // first msg
         indexIndicator.resize(C);
         indexCounters.resize(C);
         for(size_t i = 0; i < C; i++){
@@ -70,9 +70,9 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
             encryptor.encrypt_zero(indexIndicator[i][0]);
             encryptor.encrypt_zero(indexIndicator[i][1]);
             encryptor.encrypt_zero(indexCounters[i]);
-            evaluator.mod_switch_to_inplace(indexIndicator[i][0], SIC[0].parms_id());
-            evaluator.mod_switch_to_inplace(indexIndicator[i][1], SIC[0].parms_id());
-            evaluator.mod_switch_to_inplace(indexCounters[i], SIC[0].parms_id());
+            // evaluator.mod_switch_to_inplace(indexIndicator[i][0], SIC[0].parms_id());
+            // evaluator.mod_switch_to_inplace(indexIndicator[i][1], SIC[0].parms_id());
+            // evaluator.mod_switch_to_inplace(indexCounters[i], SIC[0].parms_id());
             evaluator.transform_to_ntt_inplace(indexIndicator[i][0]);
             evaluator.transform_to_ntt_inplace(indexIndicator[i][1]);
             evaluator.transform_to_ntt_inplace(indexCounters[i]);
@@ -81,7 +81,7 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
 
     for(size_t i = 0; i < SIC.size(); i++){
         // cout << "hey!" << endl;
-        evaluator.transform_to_ntt_inplace(SIC[i]);
+        // evaluator.transform_to_ntt_inplace(SIC[i]);
         for(size_t j = 0; j < C; j++){
             // cout <<"here iteration: " << i << " " << j << ": ";
             size_t index = rand()%degree;

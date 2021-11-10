@@ -7,6 +7,31 @@
 using namespace seal;
 #define PROFILE
 
+vector<uint64_t> decodeIndicesOMD(const Ciphertext& indexPack, const int& num_of_transactions, const size_t& degree, const SecretKey& secret_key, const SEALContext& context){
+    vector<uint64_t> pertinentIndices;
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+    vector<uint64_t> indexPackint(degree);
+    Plaintext plain_result;
+    decryptor.decrypt(indexPack, plain_result);
+    batch_encoder.decode(plain_result, indexPackint);
+
+    uint64_t counter = 0;
+    for(size_t i = 0; i < degree; i++){
+        if(indexPackint[i]){
+            if(indexPackint[i] & 1){
+                pertinentIndices.push_back(counter*degree + i);
+            }
+            indexPackint[i] >>= 1;
+            counter -= 1;
+        } else {
+            counter = 0;
+        }
+    }
+
+    return pertinentIndices;
+}
+
 void decodeIndices(map<int, int>& pertinentIndices, const Ciphertext& indexPack, const int& num_of_transactions, const size_t& degree, const SecretKey& secret_key, const SEALContext& context){
     // TimeVar t;
     // TIC(t);
