@@ -15,16 +15,6 @@ void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Cipher
         cerr << "counter + SIC.size should be less, please check" << endl;
         return;
     }
-    // if(SIC.size() > 16*306){ // This is because we only recover 306 slots for expandSIC, for efficiency.
-    //     cout << "Take at most 4896 elements at a time." << endl;
-    //     return;
-    // }
-    // auto saver = counter;
-    //if(!isMulti){ // if not multi, counter needs to start from 0 and then add back
-    //    counter = 0;
-    //}
-
-    // cout << "counter: " << start << endl;
 
     for(size_t i = 0; i < SIC.size(); i++){
         size_t idx = (i+start)/16; // modulus is 65537, so we can support at most 16 bits per slot
@@ -45,9 +35,6 @@ void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Cipher
         pod_matrix[idx] = 0ULL;
     }
 
-    //if(!isMulti){ // if not multi, counter needs to start from 0 and then add back
-    //    counter += saver;
-    //}
 }
 
 void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector<Ciphertext>& indexCounters, vector<Ciphertext>& SIC, const SEALContext& context, 
@@ -55,12 +42,8 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
     Encryptor encryptor(context, BFVpk);
-    vector<uint64_t> pod_matrix(degree, 0ULL); // TODOmulti: move inside to the loop for multi-threading
+    vector<uint64_t> pod_matrix(degree, 0ULL);
     srand(time(NULL));
-
-    // for(size_t i = 0; i < SIC.size(); i++){
-    //     evaluator.mod_switch_to_next_inplace(SIC[i]);
-    // }
 
     if((counter%degree) == 0){ // first msg
         indexIndicator.resize(C);
@@ -70,9 +53,6 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
             encryptor.encrypt_zero(indexIndicator[i][0]);
             encryptor.encrypt_zero(indexIndicator[i][1]);
             encryptor.encrypt_zero(indexCounters[i]);
-            // evaluator.mod_switch_to_inplace(indexIndicator[i][0], SIC[0].parms_id());
-            // evaluator.mod_switch_to_inplace(indexIndicator[i][1], SIC[0].parms_id());
-            // evaluator.mod_switch_to_inplace(indexCounters[i], SIC[0].parms_id());
             evaluator.transform_to_ntt_inplace(indexIndicator[i][0]);
             evaluator.transform_to_ntt_inplace(indexIndicator[i][1]);
             evaluator.transform_to_ntt_inplace(indexCounters[i]);
@@ -80,12 +60,8 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
     }
 
     for(size_t i = 0; i < SIC.size(); i++){
-        // cout << "hey!" << endl;
-        // evaluator.transform_to_ntt_inplace(SIC[i]);
         for(size_t j = 0; j < C; j++){
-            // cout <<"here iteration: " << i << " " << j << ": ";
             size_t index = rand()%degree;
-            // cout << index << " ";
 
             vector<uint64_t> pod_matrix(degree, 0ULL);
             Ciphertext temp;
@@ -102,8 +78,6 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
                 evaluator.add_inplace(indexIndicator[j][0], temp);
             }
 
-            // cout << counter << " ";
-
             pod_matrix[index] = counter%65537;
             if(pod_matrix[index] == 0){
                 // then nothing to do
@@ -116,8 +90,6 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
                 evaluator.add_inplace(indexIndicator[j][1], temp);
             }
 
-            // cout << i<< endl;
-
             pod_matrix[index] = 1;
             if(pod_matrix[index] == 0){
                 // then nothing to do
@@ -126,10 +98,8 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
                 batch_encoder.encode(pod_matrix, plain_matrix);
                 evaluator.transform_to_ntt_inplace(plain_matrix, SIC[i].parms_id());
                 evaluator.multiply_plain(SIC[i], plain_matrix, temp);
-                // evaluator.transform_from_ntt_inplace(temp);
                 evaluator.add_inplace(indexCounters[j], temp);
             }
-            // evaluator.transform_from_ntt_inplace(SIC[i]);
         }
         counter += 1;
     }
@@ -235,6 +205,7 @@ void payloadRetrievalOptimizedwithWeights(vector<vector<Ciphertext>>& results, c
     // cout << "!!!" << payloads[0][0] << " " << bipartite_map[0][0] << " " << endl;
 
     for(size_t i = 0; i < SIC.size(); i++){
+        // cout << i << endl;
         // if((i+start == 9000-8192) || (i+start == 9002-8192)){
         //     cout << bipartite_map[i+start] << endl;
         //     cout << weights[i+start] << endl;

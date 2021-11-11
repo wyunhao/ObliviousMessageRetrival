@@ -43,8 +43,8 @@ else()
 endif()
 
 ### ADD YOUR EXECUTABLE(s) HERE
-add_executable( regev main.cpp )
-target_link_libraries(regev SEAL::seal ntl m gmp stdc++fs)
+add_executable( OMRdemos main.cpp )
+target_link_libraries(OMRdemos SEAL::seal ntl m gmp stdc++fs)
 ###
 ### EXAMPLE:
 ### add_executable( test demo-simple-example.cpp )
