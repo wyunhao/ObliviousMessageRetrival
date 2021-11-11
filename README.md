@@ -21,7 +21,7 @@ million messages scanned, and the resulting digests can be decoded by recipients
 current applications such as privacy-preserving cryptocurrencies.
 
 ## License
-The libsnark library is developed by [Zeyu Liu](https://zeyuthomasliu.github.io/) and [Eran Tromer](https://www.tau.ac.il/~tromer/) is released under the MIT License (see the LICENSE file).
+The OMR library is developed by [Zeyu Liu](https://zeyuthomasliu.github.io/) and [Eran Tromer](https://www.tau.ac.il/~tromer/) is released under the MIT License (see the LICENSE file).
 
 ## Overview
 
