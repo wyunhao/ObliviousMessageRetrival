@@ -10,6 +10,8 @@
         "ostream": "cpp",
         "map": "cpp",
         "chrono": "cpp",
-        "iosfwd": "cpp"
+        "iosfwd": "cpp",
+        "thread": "cpp",
+        "filesystem": "cpp"
     }
 }

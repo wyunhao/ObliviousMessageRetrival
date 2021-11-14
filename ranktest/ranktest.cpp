@@ -9,16 +9,15 @@ using namespace std;
 
 typedef Matrix<double, Dynamic, Dynamic> MatrixXI;
 
- 
+// This is to perform SRLC2 test
 int test()
 {
 
-  int numthread = 1;
+  int numthread = 1; // please use single thread and use multi-threads externally
   NTL::SetNumThreads(numthread);
   int k = 50;
   int c = 5;
   int m = 2*k;
-  //MatrixXI mtx(m,k);
   int rounds = (1<<25)/numthread;
 
   std::random_device rd; // obtain a random number from hardware
@@ -45,15 +44,13 @@ int test()
 	    }
   supercounter--;
   if(mtx.colPivHouseholderQr().rank() < k) {errorctr += 1; cout << "\n!!!\n" << endl; 
-  if (errorctr>= 10) break;}
+  if (errorctr>= 1) break;}
 
   for(int i = 0; i < m;i++){
     for(int j = 0; j < k; j++){
       mtx(i,j) = 0;
     }
   }
-	//std::cout << mtx<<std::endl;
-  //std::cout << mtx.colPivHouseholderQr().rank() << std::endl;
   }
   std::cout << rounds-supercounter << " " << errorctr << std::endl;
   NTL_EXEC_INDEX_END
