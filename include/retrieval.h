@@ -9,8 +9,8 @@ void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Cipher
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
     vector<uint64_t> pod_matrix(degree, 0ULL); 
-    if(start + SIC.size() >= 16*degree){
-        cerr << "counter + SIC.size should be less, please check" << endl;
+    if(start + SIC.size() > 16*degree){
+        cerr << "counter + SIC.size should be less, please check " << start << " " << SIC.size() << endl;
         return;
     }
 

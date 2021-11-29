@@ -13,7 +13,7 @@ typedef Matrix<double, Dynamic, Dynamic> MatrixXI;
 int test()
 {
 
-  int numthread = 1; // please use single thread and use multi-threads externally
+  int numthread = 1; // please use single thread here and make it multi-threaded externally
   NTL::SetNumThreads(numthread);
   int k = 50;
   int c = 5;

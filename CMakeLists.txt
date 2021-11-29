@@ -30,7 +30,6 @@ include_directories( ${PALISADE_INCLUDE} )
 include_directories( ${PALISADE_INCLUDE}/third-party/include )
 include_directories( ${PALISADE_INCLUDE}/core )
 include_directories( ${PALISADE_INCLUDE}/pke )
-### add directories for other PALISADE modules as needed for your project
 
 link_directories( ${PALISADE_LIBDIR} )
 link_directories( ${OPENMP_LIBRARIES} )
@@ -42,9 +41,5 @@ else()
     link_libraries( ${PALISADE_SHARED_LIBRARIES} )
 endif()
 
-### ADD YOUR EXECUTABLE(s) HERE
 add_executable( OMRdemos main.cpp )
 target_link_libraries(OMRdemos SEAL::seal ntl m gmp stdc++fs)
-###
-### EXAMPLE:
-### add_executable( test demo-simple-example.cpp )
