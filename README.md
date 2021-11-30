@@ -2,7 +2,7 @@
 
 ## Authors and paper
 
-The OMR library is developed by the [Zeyu Liu](https://zeyuthomasliu.github.io/) and [Eran Tromer](https://www.tau.ac.il/~tromer/) based on their paper [Oblivious Message Retrieval](https://eprint.iacr.org/2021/1256.pdf).
+The OMR library is developed by [Zeyu (Thomas) Liu](https://zeyuthomasliu.github.io/) and [Eran Tromer](https://www.tau.ac.il/~tromer/) based on their paper [Oblivious Message Retrieval](https://eprint.iacr.org/2021/1256.pdf).
 
 ### Abstract:
 Anonymous message delivery systems, such as private messaging services and privacypreserving payment systems, need a mechanism for recipients to retrieve the messages
@@ -21,11 +21,13 @@ million messages scanned, and the resulting digests can be decoded by recipients
 current applications such as privacy-preserving cryptocurrencies.
 
 ## License
-The OMR library is developed by [Zeyu Liu](https://zeyuthomasliu.github.io/) and [Eran Tromer](https://www.tau.ac.il/~tromer/) is released under the MIT License (see the LICENSE file).
+The OMR library is developed by [Zeyu (Thomas) Liu](https://zeyuthomasliu.github.io/) and [Eran Tromer](https://www.tau.ac.il/~tromer/) is released under the MIT License (see the LICENSE file).
 
 ## Overview
 
-We describe the problem and the main techniques we used at a very high-level here. Please refer to our paper for more details.
+We describe the problem this library is dealing with. Please refer to our paper for more details.
+
+![systemModel](systemModel.jpg)
 
 ### Problem Overview (Section 4.1 in our [paper](https://eprint.iacr.org/2021/1256.pdf))
 In our system, we have a bulletin board (or board), denoted BB, that is publicly available contatining N messages. Each message is sent from some sender and is addressed to some recipient, whose identities are supposed to remain private. 
@@ -37,6 +39,69 @@ At any time, any potential recipient p may want to retrieve the messages in BB t
 A server, called a detector, helps the recipient p detect which message indices in BB are pertinent to them, or retrieve the payloads of the pertinent messages. This is done obliviously: even a malicious detector learns nothing about which messages are pertinent. The recipient gives the detector their detection key and a bound k_bar on the number of pertinent messages they expect to receive. The detector then accumulates all of the pertinent messages in BB into string M, called the digest, and sends it to the recipient p.
 
 The recipient p processes M to recover all of the pertinent messages with high probability, assuming a semi-honest detector and that the number of pertinent messages did not exceed k_bar.
+
+## What's in the demo
+### Parameters 
+N = 2^19 (or N = 500,000 padded to 2^19), k = k_bar = 50, as shwon in section 10 in our paper.
+
+### Oblivious Message Detection
+1. Key size test
+2. OMD1p (section 7.2): obliviously gather all the pertinent messages' indices and compress into a single digest.
+
+### Oblivious Message Retrieval
+1. Key size test
+2. OMR1p (1/2/4-threaded, section 7.4): obliviously gather all the pertinent messages and compress into a single digest.
+3. OMR2p (1/2/4-threaded, section 7.5): obliviously gather all the pertinent messages and compress into a single digest.
+
+## Dependencies
+
+The OMR library relies on the following:
+
+- C++ build environment
+- CMake build infrastructure
+- [SEAL](https://github.com/microsoft/SEAL) library 3.6 or 3.7 and all its dependencies
+- [PALISADE](https://gitlab.com/palisade/palisade-release) library release v1.11.2 and all its dependencies (as v1.11.2 is not publicly available anymore when this repository is made public, we use v1.11.3 in the instructions instead)
+- [NTL](https://libntl.org/) library 11.4.3 and all its dependencies
+
+### Scripts to install the dependencies and build the binary
+```
+sudo apt-get install autoconf # if no autoconf
+sudo apt-get install cmake # if no cmake
+git clone -b v1.11.3 https://gitlab.com/palisade/palisade-release
+cd palisade-development
+mkdir build
+cd build
+cmake ..
+make -j
+make install
+
+git clone -b 3.6 https://github.com/microsoft/SEAL
+cd SEAL
+cmake -S . -B build
+cmake --build build
+cmake --install build
+
+sudo apt-get install libgmp3-dev
+wget https://libntl.org/ntl-11.4.3.tar.gz
+gunzip ntl-11.4.3.tar.gz
+tar xf ntl-11.4.3.tar
+cd ntl-11.4.3/src
+./configure
+make -j
+make install
+
+# clone this repo
+cd ObliviousMessageRetrieval
+mkdir build
+cd build
+mkdir ../data
+mkdir ../data/payloads
+mkdir ../data/clues
+cmake ..
+make
+```
+
+## Overall Constructions
 
 ### Generic Fully Homomorphic Encryption (FHE) (Section 5.3)
 Generic-FHE has a special functionality we call "recrypt" (which is essentially the "bootstrapping" used in other literatures) that homomorphically decrypts an FHE ciphertext into another FHE ciphertext encrypted under the secret key corresponding to the recryption key (or bootstrapping key, and is public). 
@@ -70,56 +135,5 @@ Instead of using the randomized compression precess as before, we can compress i
 ### Reducing Detection Key Size (Section 7.8)
 The encryption of PVW secret key can be packed into a single BFV ciphertext (to achieve this, we redesigned the decryption circuit), which then reduces the detection key size from 13.5GB to ~2.6GB. We can use the seed mode in SEAL to further reduce it to ~1.3GB. This is still large and mainly due to the rotation keys of BFV. However, we can further reduce this by generating level-specific rotation keys. After the full compression, we now have only <130 MB key size for OMR1p and OMR2p, and <100MB for OMD1p.
 
-### What's in the demo
-OMD1p, OMR1p (1/2/4-threaded), OMR2p(1/2/4-threaded), OMR detection key size test, and OMD detection key size. All are dealing with N = 2^19 (or N = 500,000 padded to 2^19), k = k_bar = 50, as shwon in section 10 in our paper.
-
 ### Additional properties
 DoS resistance (Section 8) and key-unlinkablity (Section 9) are both supported, where DoS resistance is supported inherantly and key-unlinkability requires application-specific changes.
-
-## Dependencies
-
-The OMR library relies on the following:
-
-- C++ build environment
-- CMake build infrastructure
-- [SEAL](https://github.com/microsoft/SEAL) library 3.6 or 3.7 and all its dependencies
-- [PALISADE](https://gitlab.com/palisade/palisade-release) library release v1.11.2 and all its dependencies
-- [NTL](https://libntl.org/) library 11.4.3 and all its dependencies
-
-### Scripts to install the dependencies and build the binary
-```
-git clone -b v1.11.2 https://gitlab.com/palisade/palisade-development
-cd palisade-development
-mkdir build
-cd build
-sudo apt-get install autoconf
-sudo apt-get install cmake
-cmake ..
-make -j
-make install
-
-git clone -b 3.6 https://github.com/microsoft/SEAL
-cd SEAL
-cmake -S . -B build
-cmake --build build
-sudo cmake --install build
-
-sudo apt-get install libgmp3-dev
-wget https://libntl.org/ntl-11.4.3.tar.gz
-gunzip ntl-11.4.3.tar.gz
-tar xf ntl-11.4.3.tar
-cd ntl-11.4.3/src
-./configure
-make -j
-% to check: make check
-sudo make install
-
-# clone this repo
-mkdir build
-cd build
-mkdir ../data
-mkdir ../data/payloads
-mkdir ../data/clues
-cmake ..
-make
-```
