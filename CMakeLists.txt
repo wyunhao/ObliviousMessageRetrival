@@ -20,8 +20,8 @@ project(demo CXX)
 set(CMAKE_CXX_STANDARD 11)
 option( BUILD_STATIC "Set to ON to include static versions of the library" OFF)
 
-find_package(Palisade)
-find_package(SEAL 3.6 REQUIRED)
+find_package(Palisade REQUIRED PATHS ~/mylibs)
+find_package(SEAL 3.6 REQUIRED PATHS ~/mylibs)
 
 set( CMAKE_CXX_FLAGS ${PALISADE_CXX_FLAGS} )
 

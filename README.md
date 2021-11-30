@@ -67,28 +67,22 @@ The OMR library relies on the following:
 ```
 sudo apt-get install autoconf # if no autoconf
 sudo apt-get install cmake # if no cmake
+sudo apt-get install libgmp3-dev # if no gmp
+sudo apt-get install libntl-dev=11.4.3-1build1 # if no ntl
+
 git clone -b v1.11.3 https://gitlab.com/palisade/palisade-release
 cd palisade-development
 mkdir build
 cd build
-cmake ..
+cmake .. -DCMAKE_INSTALL_PREFIX=~/mylibs # please change ~/mylibs to any path you would like your libaries to be installed
 make -j
 make install
 
-git clone -b 3.6 https://github.com/microsoft/SEAL
+git clone -b 3.6.6 https://github.com/microsoft/SEAL
 cd SEAL
-cmake -S . -B build
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=~/mylibs
 cmake --build build
 cmake --install build
-
-sudo apt-get install libgmp3-dev
-wget https://libntl.org/ntl-11.4.3.tar.gz
-gunzip ntl-11.4.3.tar.gz
-tar xf ntl-11.4.3.tar
-cd ntl-11.4.3/src
-./configure
-make -j
-make install
 
 # clone this repo
 cd ObliviousMessageRetrieval
