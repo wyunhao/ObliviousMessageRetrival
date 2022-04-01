@@ -70,12 +70,15 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
 
     Evaluator evaluator(context);
     int step = 32; // simply to save memory so process 32 msgs at a time
+    bool expandAlter = true;
     
     for(int i = counter; i < counter+numOfTransactions; i += step){
         vector<Ciphertext> expandedSIC;
         // step 1. expand PV
-        expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, context2, step, i-counter);
-
+        if(expandAlter)
+            expandSIC_Alt(expandedSIC, packedSIC, gal_keys, gal_keys_last, int(degree), context, context2, step, i-counter);
+        else
+            expandSIC(expandedSIC, packedSIC, gal_keys, gal_keys_last, int(degree), context, context2, step, i-counter);
         // transform to ntt form for better efficiency especially for the last two steps
         for(size_t j = 0; j < expandedSIC.size(); j++)
             if(!expandedSIC[j].is_ntt_form())
@@ -111,7 +114,7 @@ void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext
     for(int i = counter; i < counter+numOfTransactions; i += step){
         // step 1. expand PV
         vector<Ciphertext> expandedSIC;
-        expandSIC(expandedSIC, packedSIC, gal_keys, int(degree), context, context2, step, i-counter);
+        expandSIC(expandedSIC, packedSIC, gal_keys, gal_keys_last, int(degree), context, context2, step, i-counter);
         // transform to ntt form for better efficiency for all of the following steps
         for(size_t j = 0; j < expandedSIC.size(); j++)
             if(!expandedSIC[j].is_ntt_form())
@@ -153,7 +156,8 @@ vector<vector<long>> receiverDecoding(Ciphertext& lhsEnc, vector<vector<int>>& b
 
     // 2. forming rhs
     vector<vector<int>> rhs;
-    formRhs(rhs, rhsEnc, secret_key, degree, context, OMRtwoM);
+    vector<Ciphertext> rhsEncVec{rhsEnc};
+    formRhs(rhs, rhsEncVec, secret_key, degree, context, OMRtwoM);
 
     // 3. forming lhs
     vector<vector<int>> lhs;
@@ -179,7 +183,8 @@ vector<vector<long>> receiverDecodingOMR3(vector<vector<Ciphertext>>& lhsEnc, ve
 
     // 2. forming rhs
     vector<vector<int>> rhs;
-    formRhs(rhs, rhsEnc, secret_key, degree, context, OMRthreeM);
+    vector<Ciphertext> rhsEncVec{rhsEnc};
+    formRhs(rhs, rhsEncVec, secret_key, degree, context, OMRthreeM);
 
     // 3. forming lhs
     vector<vector<int>> lhs;
@@ -289,9 +294,9 @@ void levelspecificDetectKeySize(){
     auto degree = poly_modulus_degree;
     parms.set_poly_modulus_degree(poly_modulus_degree);
     auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28, 
-                                                                            39, 60, 60, 60, 60, 
+                                                                            60, 60, 60, 60, 60, 
                                                                             60, 60, 60, 60, 60, 60,
-                                                                            32, 30, 60 });
+                                                                            60, 30, 60 });
     parms.set_coeff_modulus(coeff_modulus);
     parms.set_plain_modulus(65537);
 
@@ -325,7 +330,7 @@ void levelspecificDetectKeySize(){
     stringstream lvlRTK, lvlRTK2;
     /////////////////////////////////////// Level specific keys
     vector<Modulus> coeff_modulus_next = coeff_modulus;
-    coeff_modulus_next.erase(coeff_modulus_next.begin() + 3, coeff_modulus_next.end()-1);
+    coeff_modulus_next.erase(coeff_modulus_next.begin() + 4, coeff_modulus_next.end()-1);
     EncryptionParameters parms_next = parms;
     parms_next.set_coeff_modulus(coeff_modulus_next);
     parms_next.set_random_generator(rng);
@@ -339,11 +344,11 @@ void levelspecificDetectKeySize(){
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next); 
-    vector<int> steps_next = {0,1};
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
     auto reskeysize = keygen_next.create_galois_keys(steps_next).save(lvlRTK);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;
-    coeff_modulus_last.erase(coeff_modulus_last.begin() + 2, coeff_modulus_last.end()-1);
+    coeff_modulus_last.erase(coeff_modulus_last.begin() + 3, coeff_modulus_last.end()-1);
     EncryptionParameters parms_last = parms;
     parms_last.set_coeff_modulus(coeff_modulus_last);
     parms_last.set_random_generator(rng);
@@ -357,7 +362,8 @@ void levelspecificDetectKeySize(){
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_last.data().data() + degree * (coeff_modulus_last.size() - 1));
     KeyGenerator keygen_last(context_last, sk_last); 
-    reskeysize += keygen_last.create_galois_keys(steps).save(lvlRTK2);
+    vector<int> steps_last = {1,2,4,8,16};
+    reskeysize += keygen_last.create_galois_keys(steps_last).save(lvlRTK2);
     //////////////////////////////////////
 
     seal::Serializable<PublicKey> pk = keygen.create_public_key();
@@ -564,9 +570,9 @@ void OMR2(){
     auto degree = poly_modulus_degree;
     parms.set_poly_modulus_degree(poly_modulus_degree);
     auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28, 
-                                                                            39, 60, 60, 60, 60, 
+                                                                            60, 60, 60, 60, 60, 
                                                                             60, 60, 60, 60, 60, 60,
-                                                                            32, 30, 60 });
+                                                                            60, 30, 60 });
     parms.set_coeff_modulus(coeff_modulus);
     parms.set_plain_modulus(65537);
 
@@ -630,11 +636,11 @@ void OMR2(){
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next); 
-    vector<int> steps_next = {0,1};
-    keygen_next.create_galois_keys(steps_next, gal_keys_next);
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
+    keygen_next.create_galois_keys(steps, gal_keys_next);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;
-    coeff_modulus_last.erase(coeff_modulus_last.begin() + 2, coeff_modulus_last.end()-1);
+    coeff_modulus_last.erase(coeff_modulus_last.begin() + 3, coeff_modulus_last.end()-1);
     EncryptionParameters parms_last = parms;
     parms_last.set_coeff_modulus(coeff_modulus_last);
     SEALContext context_last = SEALContext(parms_last, true, sec_level_type::none);
@@ -646,6 +652,7 @@ void OMR2(){
     util::set_poly(
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_last.data().data() + degree * (coeff_modulus_last.size() - 1));
+    vector<int> steps_last = {1,2,4,8,16};
     KeyGenerator keygen_last(context_last, sk_last); 
     keygen_last.create_galois_keys(steps, gal_keys_last);
     //////////////////////////////////////
@@ -723,9 +730,13 @@ void OMR2(){
     }
 
     while(context.last_parms_id() != lhs_multi[0].parms_id()){
+        cout << "make sure" << endl;
+        cout << rhs_multi[0].parms_id() << endl;
+        cout << context.last_parms_id() << endl;
             evaluator.mod_switch_to_next_inplace(rhs_multi[0]);
+            cout << rhs_multi[0].parms_id() << endl;
             evaluator.mod_switch_to_next_inplace(lhs_multi[0]);
-        }
+    }
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);

@@ -6,6 +6,7 @@
 #include "global.h"
 using namespace seal;
 
+
 // takes a vector of ciphertexts, and mult them all together result in the first element of the vector
 // depth optimal using tree-shaped method
 inline
@@ -52,7 +53,7 @@ void innerSum_inplace(Ciphertext& output, const GaloisKeys& gal_keys, const size
 }
 
 // Takes one SIC compressed and expand then into SIC's each encrypt 0/1 in slots up to toExpandNum
-void expandSIC(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisKeys& gal_keys,
+void expandSIC(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisKeys& gal_keys, const GaloisKeys& gal_keys_lower,
                 const size_t& degree, const SEALContext& context, const SEALContext& context2, const size_t& toExpandNum, const size_t& start = 0){ 
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
@@ -78,7 +79,93 @@ void expandSIC(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisK
 	    evaluator.mod_switch_to_next_inplace(expanded[i]);
 	    evaluator.mod_switch_to_next_inplace(expanded[i]);
         // populate to all slots
-        innerSum_inplace(expanded[i], gal_keys_last, degree, degree, context2); 
+        innerSum_inplace(expanded[i], gal_keys_lower, degree, degree, context2); 
+    }
+}
+
+// Takes one SIC compressed and expand then into SIC's each encrypt 0/1 in slots up to toExpandNum
+void expandSIC_Alt(vector<Ciphertext>& expanded, Ciphertext& toExpand, const GaloisKeys& gal_keys, const GaloisKeys& gal_keys_lower,
+                const size_t& degree, const SEALContext& context, const SEALContext& context2, const size_t& toExpandNum, const size_t& start = 0){ 
+    
+    if(toExpandNum != 32){
+        cerr << "Not implemented for toExpandNum = " << toExpandNum << endl;
+        exit(1);
+    }
+
+    BatchEncoder batch_encoder(context);
+    Evaluator evaluator(context), evaluator2(context2);
+    expanded.resize(toExpandNum);
+
+    // 1. Extract the first 32 element and rotate toExpand by 32, rotate to fill out for every 32 element
+    vector<uint64_t> pod_matrix(degree, 0ULL); 
+    for(size_t i = 0; i < toExpandNum; i++){
+        pod_matrix[i] = 1ULL;
+    }
+    Plaintext plain_matrix;
+    batch_encoder.encode(pod_matrix, plain_matrix);
+    Ciphertext first32elements;
+    evaluator.multiply_plain(toExpand, plain_matrix, first32elements);
+    if(start == degree/2){
+        evaluator.rotate_columns_inplace(toExpand, gal_keys);
+    }
+    evaluator.rotate_rows_inplace(toExpand, toExpandNum, gal_keys); 
+    evaluator.mod_switch_to_next_inplace(first32elements);
+
+    // evaluator = Evaluator(context2);
+    for(size_t i = 32; i < degree; i <<= 1){
+        Ciphertext temp;
+        if(i == degree/2){
+            evaluator2.rotate_columns(first32elements, gal_keys_lower, temp);
+        } else {
+            evaluator2.rotate_rows(first32elements, i, gal_keys_lower, temp);
+        }
+        evaluator2.add_inplace(first32elements, temp);
+    }
+    // expanded.resize(1);
+    // expanded[0] = first32elements;
+    // return;
+
+    // 2. Divide it into 8 parts evenly
+    vector<Ciphertext> intermediateStep8elements(8);
+    for(size_t j = 0; j < 32; j += 4){
+        vector<uint64_t> pod_matrix(degree, 0ULL); 
+        for(size_t i = 0; i < degree; i += 32){
+            pod_matrix[i+0+j] = 1ULL;
+            pod_matrix[i+1+j] = 1ULL;
+            pod_matrix[i+2+j] = 1ULL;
+            pod_matrix[i+3+j] = 1ULL;
+        }
+        Plaintext plain_matrix;
+        batch_encoder.encode(pod_matrix, plain_matrix);
+        evaluator2.multiply_plain(first32elements, plain_matrix, intermediateStep8elements[j/4]);
+        evaluator2.mod_switch_to_next_inplace(intermediateStep8elements[j/4]);
+
+        for(size_t i = 4; i < 32; i <<= 1){
+            Ciphertext temp;
+            evaluator2.rotate_rows(intermediateStep8elements[j/4], i, gal_keys_lower, temp);
+            evaluator2.add_inplace(intermediateStep8elements[j/4], temp);
+        }
+    }
+
+    // 3. Divide 8 parts into 32 elements
+    for(size_t j = 0; j < 4; j += 1){
+        vector<uint64_t> pod_matrix(degree, 0ULL); 
+        for(size_t i = 0; i < degree; i += 4){
+            pod_matrix[i+j] = 1ULL;
+        }
+        Plaintext plain_matrix;
+        batch_encoder.encode(pod_matrix, plain_matrix);
+
+        for(size_t k = 0; k < 8; k++){
+            evaluator2.multiply_plain(intermediateStep8elements[k], plain_matrix, expanded[k*4 + j]);
+            for(size_t i = 1; i < 4; i <<= 1){
+                Ciphertext temp;
+                evaluator2.rotate_rows(expanded[k*4 + j], i, gal_keys_lower, temp);
+                evaluator2.add_inplace(expanded[k*4 + j], temp);
+            }
+        }
+
+        
     }
 }
 
