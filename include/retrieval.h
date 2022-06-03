@@ -2,22 +2,24 @@
 
 #include <algorithm>
 
-// one transaction taking one bit
+// one party take log(partySize + 1) bits in one slot
 void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Ciphertext>& SIC, const SEALContext& context, 
-                                    const size_t& degree, const size_t& start
-                                    , bool isMulti = false){ 
+                                    const size_t& degree, const size_t& start, int partySize = 1){ 
+
+    int packSize = (int) (log2(65537) / log2(partySize + 1)); // number of parties one slot can pack
+
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
     vector<uint64_t> pod_matrix(degree, 0ULL); 
-    if(start + SIC.size() > 16*degree){
+    if(start + SIC.size() > packSize * degree){
         cerr << "counter + SIC.size should be less, please check " << start << " " << SIC.size() << endl;
         return;
     }
 
     for(size_t i = 0; i < SIC.size(); i++){
-        size_t idx = (i+start)/16;
-        size_t shift = (i+start) % 16;
-        pod_matrix[idx] = (1<<shift);
+        size_t idx = (i+start) / packSize;
+        size_t shift = (i+start) % packSize;
+        pod_matrix[idx] = (1 << ((int) log2(partySize + 1) * shift));
         Plaintext plain_matrix;
         batch_encoder.encode(pod_matrix, plain_matrix);
         evaluator.transform_to_ntt_inplace(plain_matrix, SIC[i].parms_id());
@@ -31,7 +33,6 @@ void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Cipher
         }
         pod_matrix[idx] = 0ULL;
     }
-
 }
 
 // For randomized index retrieval

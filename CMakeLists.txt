@@ -1,5 +1,4 @@
 cmake_minimum_required (VERSION 3.5.1)
-
 ### To use gcc/g++ on a Macintosh, you must set the Compilers
 ### here, not inside the project
 ##if(APPLE)
@@ -21,7 +20,7 @@ set(CMAKE_CXX_STANDARD 11)
 option( BUILD_STATIC "Set to ON to include static versions of the library" OFF)
 
 find_package(Palisade REQUIRED)
-find_package(SEAL 3.6 REQUIRED)
+find_package(SEAL REQUIRED)
 
 set( CMAKE_CXX_FLAGS ${PALISADE_CXX_FLAGS} )
 
@@ -41,5 +40,6 @@ else()
     link_libraries( ${PALISADE_SHARED_LIBRARIES} )
 endif()
 
-add_executable( OMRdemos main.cpp)
-target_link_libraries(OMRdemos SEAL::seal ntl m gmp stdc++fs)
+add_executable( OMRdemos main.cpp )
+
+target_link_libraries(OMRdemos SEAL::seal ntl m gmp)

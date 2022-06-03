@@ -36,7 +36,9 @@ vector<uint64_t> decodeIndicesOMD(const Ciphertext& indexPack, const int& num_of
 
 // Deterministic decoding for OMR
 // the deterministic encoding for OMD is more efficient, but has limited affect on the overall performance
-void decodeIndices(map<int, int>& pertinentIndices, const Ciphertext& indexPack, const int& num_of_transactions, const size_t& degree, const SecretKey& secret_key, const SEALContext& context){
+// param: pertinentIndices - <index, <counter, group_pv_value>>, double layer map
+void decodeIndices(map<int, pair<int, int>>& pertinentIndices, const Ciphertext& indexPack, const int& num_of_transactions,
+                   const size_t& degree, const SecretKey& secret_key, const SEALContext& context, int partySize = 1) {
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
     vector<uint64_t> indexPackint(degree);
@@ -44,28 +46,30 @@ void decodeIndices(map<int, int>& pertinentIndices, const Ciphertext& indexPack,
     decryptor.decrypt(indexPack, plain_result);
     batch_encoder.decode(plain_result, indexPackint);
     int counter = 0;
-    int backcounter = 16;
+    int backcounter = (int) (log2(65537) / log2(partySize + 1));
     int idx = 0;
     for(int i = 0; i < num_of_transactions;){
         if(!indexPackint[idx])
         {
             idx += 1;
             i += backcounter;
-            backcounter = 16;
+            backcounter = (int) (log2(65537) / log2(partySize + 1));
             continue;
         }
-        if(indexPackint[idx]&1) // check if that slot is 1
+        if((indexPackint[idx] & partySize) > 0) // check if that slot is not zero
         {
-            pertinentIndices.insert(pair<int, int>(i, counter++));
+            pair<int, int> temp(counter++, indexPackint[idx]);
+            pertinentIndices.insert(pair<int, pair<int, int>>(i, temp));
         }
-        indexPackint[idx] >>= 1;
+        indexPackint[idx] >>= (int) log2(partySize + 1);
         backcounter -= 1;
         i++;
     }
 }
 
 // Randomized decoding for OMR
-void decodeIndicesRandom(map<int, int>& pertinentIndices, const vector<vector<Ciphertext>>& indexPack, const vector<Ciphertext>& indexCounter,
+// TODO: for compatibility, pertinentIndices is a double-layer map, might need refactor to optimize 
+void decodeIndicesRandom(map<int, pair<int, int>>& pertinentIndices, const vector<vector<Ciphertext>>& indexPack, const vector<Ciphertext>& indexCounter,
                                      const size_t& degree, const SecretKey& secret_key, const SEALContext& context){
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
@@ -92,7 +96,8 @@ void decodeIndicesRandom(map<int, int>& pertinentIndices, const vector<vector<Ci
             if(plain_counter[j] == 1){ // check the slots without collision
                 uint64_t index = plain_one[j]*65537 + plain_two[j];
                 if(pertinentIndices.find(index) == pertinentIndices.end()){
-                    pertinentIndices.insert(pair<int, int>(index, counter++));
+                    pair<int, int> temp(counter++, 1);
+                    pertinentIndices.insert(pair<int, pair<int, int>>(index, temp));
                 }
             }
         }
@@ -107,7 +112,7 @@ void decodeIndicesRandom(map<int, int>& pertinentIndices, const vector<vector<Ci
 }
 
 // Randomized decoding for OMR optimized
-void decodeIndicesRandom_opt(map<int, int>& pertinentIndices, const vector<Ciphertext>& buckets, size_t C, size_t num_buckets,
+void decodeIndicesRandom_opt(map<int, pair<int, int>>& pertinentIndices, const vector<Ciphertext>& buckets, size_t C, size_t num_buckets,
                                      const size_t& degree, const SecretKey& secret_key, const SEALContext& context,
                                      size_t slots_per_bucket = 3){
     Decryptor decryptor(context, secret_key);
@@ -133,7 +138,8 @@ void decodeIndicesRandom_opt(map<int, int>& pertinentIndices, const vector<Ciphe
                 if(plain_bucket[k + 2*num_buckets + j*slots_per_bucket*num_buckets] == 1){
                     uint64_t index = plain_bucket[k + 0*num_buckets + j*slots_per_bucket*num_buckets]*65537 + plain_bucket[k + 1*num_buckets + j*slots_per_bucket*num_buckets];
                     if(pertinentIndices.find(index) == pertinentIndices.end()){
-                        pertinentIndices.insert(pair<int, int>(index, counter++));
+                        pair<int, int> temp(counter++, 1);
+                        pertinentIndices.insert(pair<int, pair<int, int>>(index, temp));
                     }
                 }
                 if(counter == realNumOfPertinentMsg)
@@ -176,21 +182,20 @@ void formRhs(vector<vector<int>>& rhs, const vector<Ciphertext>& packedPayloads,
 }
 
 // Construct the LHS of the equations
-void formLhsWeights(vector<vector<int>>& lhs, map<int, int>& pertinentIndices, const vector<vector<int>>& bipartite_map, vector<vector<int>>& weights,
-                            const int start = 0, const int num_of_buckets = 64){ // the last two parameters are for more buckets
+void formLhsWeights(vector<vector<int>>& lhs, map<int, pair<int, int>>& pertinentIndices, const vector<vector<int>>& bipartite_map, vector<vector<int>>& weights,
+                            const int start = 0, const int num_of_buckets = 64) { // start and num_of_buckets are for more buckets
     auto pertinentTransactionNum = pertinentIndices.size();
     lhs.resize(num_of_buckets);
     for(int i = 0; i < num_of_buckets; i++){
         lhs[i].resize(pertinentTransactionNum);
     }
 
-    map<int, int>::iterator itr;
+    map<int, pair<int, int>>::iterator itr;
     for(itr = pertinentIndices.begin(); itr != pertinentIndices.end(); ++itr){
         auto ptr = &bipartite_map[itr->first];
         for(size_t j = 0; j < ptr->size(); j++){
-            lhs[(*ptr)[j]][itr->second] = weights[itr->first][j]; 
+            lhs[(*ptr)[j]][itr->second.first] = weights[itr->first][j] * itr->second.second;
         }
-
     }
 }
 

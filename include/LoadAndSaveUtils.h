@@ -3,7 +3,6 @@
 #include<iostream>
 #include<fstream>
 #include<string>
-#include<experimental/filesystem>
 using namespace std;
 
 void createDatabase(int num_of_transactions = 524288, int payloadSize = 306){
@@ -46,27 +45,32 @@ void saveClues(const PVWCiphertext& clue, int transaction_num){
     datafile.close();
 }
 
-void loadData(vector<vector<uint64_t>>& msgs, const int& start, const int& end, int payloadSize = 306){
-    msgs.resize(end-start);
+void loadData(vector<vector<uint64_t>>& msgs, const int& start, const int& end, int payloadSize = 306, int partySize = 1){
+    msgs.resize((end-start) * partySize);
     for(int i = start; i < end; i++){
         msgs[i-start].resize(payloadSize);
         ifstream datafile;
-        datafile.open("../data/payloads/"+to_string(i)+".txt");
-        for(int j = 0; j < payloadSize; j++){
-            datafile >> msgs[i-start][j];
+
+        // duplicate each unique message |partySize| times
+        for (int p = 0; p < partySize; p++) {
+            datafile.open("../data/payloads/"+to_string(i)+".txt");
+            datafile.seekg(0, ios::beg);
+            for(int j = 0; j < payloadSize; j++){
+                datafile >> msgs[(i-start) * partySize + p][j];
+            }
+            datafile.close();
         }
-        datafile.close();
     }
 }
 
-void loadClues(vector<PVWCiphertext>& clues, const int& start, const int& end, const PVWParam& param){
+void loadClues(vector<PVWCiphertext>& clues, const int& start, const int& end, const PVWParam& param, int party_ind = 0, int partySize = 1){
     clues.resize(end-start);
     for(int i = start; i < end; i++){
         clues[i-start].a = NativeVector(param.n);
         clues[i-start].b = NativeVector(param.ell);
 
         ifstream datafile;
-        datafile.open ("../data/clues/"+to_string(i)+".txt");
+        datafile.open ("../data/clues/"+to_string(i * partySize + party_ind)+".txt");
 
         for(int j = 0; j < param.n; j++){
             uint64_t temp;
