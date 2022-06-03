@@ -106,6 +106,60 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
     return;
 }
 
+// For randomized index retrieval
+// We first have 2 ciphertexts, as we need to represent N ~= 500,000, so sqrt(N) < 65537
+// We also need a counter
+// Each msg is randomly assigned to one accumulator
+// Then we repeat this process C times and gather partial information to reduce failure probability
+void randomizedIndexRetrieval_opt(vector<Ciphertext>& buckets, vector<Ciphertext>& SIC, const SEALContext& context, 
+                                        const PublicKey& BFVpk, int counter, const size_t& degree, size_t C, size_t C_prime, size_t num_buckets){ 
+    BatchEncoder batch_encoder(context);
+    Evaluator evaluator(context);
+    Encryptor encryptor(context, BFVpk);
+    srand(time(NULL));
+
+    if((counter%degree) == 0){ // first msg
+        buckets.resize(C_prime);
+        for(size_t i = 0; i < C_prime; i++){
+            buckets[i].resize(2); // 2 cts allow 65537^2 total messages, which is in general enough so we hard code this.
+            encryptor.encrypt_zero(buckets[i]);
+            while(buckets[i].parms_id() != SIC[0].parms_id()){
+                evaluator.mod_switch_to_next_inplace(buckets[i]);
+            }
+            evaluator.transform_to_ntt_inplace(buckets[i]);
+        }
+    }
+
+    for(size_t i = 0; i < SIC.size(); i++){
+        vector<vector<uint64_t>> pod_matrices(C_prime);
+        for(size_t i = 0; i < C_prime; i++){
+            pod_matrices[i] = vector<uint64_t>(degree, 0ULL);
+        }
+        
+        Ciphertext temp;
+        for(size_t j = 0; j < C; j++){
+            size_t index = rand()%num_buckets;
+            index += (j * 3 * num_buckets);
+            size_t the_scalar_mtx = index/(degree / num_buckets / 3 * num_buckets * 3);
+            index %= (degree / num_buckets / 3 * num_buckets * 3);
+            pod_matrices[the_scalar_mtx][index] = counter/65537;
+            pod_matrices[the_scalar_mtx][index + num_buckets] = counter%65537;
+            pod_matrices[the_scalar_mtx][index + 2*num_buckets] = 1;
+        }
+
+        for(size_t j = 0; j < C_prime; j++){
+            Plaintext plain_matrix;
+            batch_encoder.encode(pod_matrices[j], plain_matrix);
+            evaluator.transform_to_ntt_inplace(plain_matrix, SIC[i].parms_id());
+            evaluator.multiply_plain(SIC[i], plain_matrix, temp);
+            evaluator.add_inplace(buckets[j], temp);
+        }
+        
+        counter += 1;
+    }
+    return;
+}
+
 // generate the random assignment of each message represented as a bipartite grap
 // generate weights for each assignment
 void bipartiteGraphWeightsGeneration(vector<vector<int>>& bipartite_map, vector<vector<int>>& weights, const int& num_of_transactions, const int& num_of_buckets, const int& repetition, const int& seed){

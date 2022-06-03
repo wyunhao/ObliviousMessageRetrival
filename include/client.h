@@ -106,6 +106,48 @@ void decodeIndicesRandom(map<int, int>& pertinentIndices, const vector<vector<Ci
     }
 }
 
+// Randomized decoding for OMR optimized
+void decodeIndicesRandom_opt(map<int, int>& pertinentIndices, const vector<Ciphertext>& buckets, size_t C, size_t num_buckets,
+                                     const size_t& degree, const SecretKey& secret_key, const SEALContext& context){
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+
+    int counter = 0;
+    int realNumOfPertinentMsg = 0;
+    vector<uint64_t> countertemp(degree);
+    Plaintext plain_result;
+    decryptor.decrypt(buckets[0], plain_result);
+    batch_encoder.decode(plain_result, countertemp);
+    for(size_t i = 2*num_buckets; i < 3*num_buckets; i++){
+        realNumOfPertinentMsg += countertemp[i]; // first sumup the counters to see how many messages are there
+    }
+
+    for(size_t i = 0; i < buckets.size(); i++){
+        vector<uint64_t> plain_bucket(degree);
+        decryptor.decrypt(buckets[i], plain_result);
+        batch_encoder.decode(plain_result, plain_bucket);
+        
+        for(size_t j = 0; j < degree/num_buckets/3; j++){
+            for(size_t k = 0; k < num_buckets; k++){
+                if(plain_bucket[k + 2*num_buckets + j*3*num_buckets] == 1){
+                    uint64_t index = plain_bucket[k + 0*num_buckets + j*3*num_buckets]*65537 + plain_bucket[k + 1*num_buckets + j*3*num_buckets];
+                    if(pertinentIndices.find(index) == pertinentIndices.end()){
+                        pertinentIndices.insert(pair<int, int>(index, counter++));
+                    }
+                }
+                if(counter == realNumOfPertinentMsg)
+                break;
+            }
+        }
+    }
+
+    if(counter != realNumOfPertinentMsg)
+    {
+        cerr << "Overflow: only got " << counter << " pertinent messages' indices."  << endl;
+        exit(1);
+    }
+}
+
 // Construct the RHS of the equations
 void formRhs(vector<vector<int>>& rhs, const vector<Ciphertext>& packedPayloads, const SecretKey& secret_key, const size_t& degree, const SEALContext& context,
                          const int num_of_buckets = 64, const int payloadSlots = 306){ // or 306

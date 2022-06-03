@@ -103,7 +103,7 @@ void serverOperations2therest(Ciphertext& lhs, vector<vector<int>>& bipartite_ma
 }
 
 // Phase 2, retrieving for OMR3
-void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext>& lhsCounter, vector<vector<int>>& bipartite_map, Ciphertext& rhs,
+void serverOperations3therest(vector<Ciphertext>& lhsCounter, vector<vector<int>>& bipartite_map, Ciphertext& rhs,
                         Ciphertext& packedSIC, const vector<vector<uint64_t>>& payload, const RelinKeys& relin_keys, const GaloisKeys& gal_keys, const PublicKey& public_key,
                         const size_t& degree, const SEALContext& context, const SEALContext& context2, const PVWParam& params, const int numOfTransactions, 
                         int& counter, const int payloadSize = 306){
@@ -114,14 +114,14 @@ void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext
     for(int i = counter; i < counter+numOfTransactions; i += step){
         // step 1. expand PV
         vector<Ciphertext> expandedSIC;
-        expandSIC(expandedSIC, packedSIC, gal_keys, gal_keys_last, int(degree), context, context2, step, i-counter);
+        expandSIC_Alt(expandedSIC, packedSIC, gal_keys, gal_keys_last, int(degree), context, context2, step, i-counter);
         // transform to ntt form for better efficiency for all of the following steps
         for(size_t j = 0; j < expandedSIC.size(); j++)
             if(!expandedSIC[j].is_ntt_form())
                 evaluator.transform_to_ntt_inplace(expandedSIC[j]);
         
         // step 2. randomized retrieval
-        randomizedIndexRetrieval(lhs, lhsCounter, expandedSIC, context2, public_key, i, degree, C_glb);
+        randomizedIndexRetrieval_opt(lhsCounter, expandedSIC, context, public_key, i, degree, 5, 1, 512);
     
         // step 3-4. multiply weights and pack them
         // The following two steps are for streaming updates
@@ -130,9 +130,7 @@ void serverOperations3therest(vector<vector<Ciphertext>>& lhs, vector<Ciphertext
         // Note that if number of repeatitions is already set, this is the only step needed for streaming updates
         payloadPackingOptimized(rhs, payloadUnpacked, bipartite_map_glb, degree, context, gal_keys, i);
     }
-    for(size_t i = 0; i < lhs.size(); i++){
-            evaluator.transform_from_ntt_inplace(lhs[i][0]);
-            evaluator.transform_from_ntt_inplace(lhs[i][1]);
+    for(size_t i = 0; i < lhsCounter.size(); i++){
             evaluator.transform_from_ntt_inplace(lhsCounter[i]);
     }
     if(rhs.is_ntt_form())
@@ -169,12 +167,12 @@ vector<vector<long>> receiverDecoding(Ciphertext& lhsEnc, vector<vector<int>>& b
     return newrhs;
 }
 
-vector<vector<long>> receiverDecodingOMR3(vector<vector<Ciphertext>>& lhsEnc, vector<Ciphertext>& lhsCounter, vector<vector<int>>& bipartite_map, Ciphertext& rhsEnc,
+vector<vector<long>> receiverDecodingOMR3(vector<Ciphertext>& lhsCounter, vector<vector<int>>& bipartite_map, Ciphertext& rhsEnc,
                         const size_t& degree, const SecretKey& secret_key, const SEALContext& context, const int numOfTransactions, int seed = 3,
                         const int payloadUpperBound = 306, const int payloadSize = 306){
     // 1. find pertinent indices
     map<int, int> pertinentIndices;
-    decodeIndicesRandom(pertinentIndices, lhsEnc, lhsCounter, degree, secret_key, context);
+    decodeIndicesRandom_opt(pertinentIndices, lhsCounter, 5, 512, degree, secret_key, context);
     for (map<int, int>::iterator it = pertinentIndices.begin(); it != pertinentIndices.end(); it++)
     {
         std::cout << it->first << " ";    // print out all the indices found
@@ -787,9 +785,9 @@ void OMR3(){
     auto degree = poly_modulus_degree;
     parms.set_poly_modulus_degree(poly_modulus_degree);
     auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28, 
-                                                                            39, 60, 60, 60, 60, 
+                                                                            60, 60, 60, 60, 60, 
                                                                             60, 60, 60, 60, 60, 60,
-                                                                            32, 30, 60 });
+                                                                            60, 30, 60 });
     parms.set_coeff_modulus(coeff_modulus);
     parms.set_plain_modulus(65537);
 
@@ -827,6 +825,7 @@ void OMR3(){
 
     GaloisKeys gal_keys;
     vector<int> stepsfirst = {1};
+    // only one rot key is needed for full level
     keygen.create_galois_keys(stepsfirst, gal_keys);
 
     /////////////////////////////////////////////////////////////// Rot Key gen
@@ -852,11 +851,11 @@ void OMR3(){
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next); 
-    vector<int> steps_next = {0,1};
-    keygen_next.create_galois_keys(steps_next, gal_keys_next);
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
+    keygen_next.create_galois_keys(steps, gal_keys_next);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;
-    coeff_modulus_last.erase(coeff_modulus_last.begin() + 2, coeff_modulus_last.end()-1);
+    coeff_modulus_last.erase(coeff_modulus_last.begin() + 3, coeff_modulus_last.end()-1);
     EncryptionParameters parms_last = parms;
     parms_last.set_coeff_modulus(coeff_modulus_last);
     SEALContext context_last = SEALContext(parms_last, true, sec_level_type::none);
@@ -868,10 +867,12 @@ void OMR3(){
     util::set_poly(
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_last.data().data() + degree * (coeff_modulus_last.size() - 1));
+    vector<int> steps_last = {1,2,4,8,16};
     KeyGenerator keygen_last(context_last, sk_last); 
     keygen_last.create_galois_keys(steps, gal_keys_last);
+    //////////////////////////////////////
     PublicKey public_key_last;
-    keygen_last.create_public_key(public_key_last);
+    keygen_next.create_public_key(public_key_last);
     
     //////////////////////////////////////
 
@@ -908,7 +909,6 @@ void OMR3(){
 
 
     // step 4. detector operations
-    vector<vector<vector<Ciphertext>>> lhs_multi(numcores);
     vector<vector<Ciphertext>> lhs_multi_ctr(numcores);
     vector<Ciphertext> rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
@@ -927,22 +927,15 @@ void OMR3(){
             if(!i)
                 cout << "Phase 2-3, Core " << i << ", Batch " << j << endl;
             loadData(payload_multicore[i], counter[i], counter[i]+poly_modulus_degree);
-            vector<vector<Ciphertext>> templhs;
             vector<Ciphertext> templhsctr;
             Ciphertext temprhs;
-            serverOperations3therest(templhs, templhsctr, bipartite_map[i], temprhs,
+            serverOperations3therest(templhsctr, bipartite_map[i], temprhs,
                             packedSICfromPhase1[i][j], payload_multicore[i], relin_keys, gal_keys_next, public_key_last,
                             poly_modulus_degree, context_next, context_last, params, poly_modulus_degree, counter[i]);
             if(j == 0){
-                lhs_multi[i] = templhs;
                 lhs_multi_ctr[i] = templhsctr;
                 rhs_multi[i] = temprhs;
             } else {
-                for(size_t q = 0; q < lhs_multi[i].size(); q++){
-                    for(size_t w = 0; w < lhs_multi[i][q].size(); w++){
-                        evaluator.add_inplace(lhs_multi[i][q][w], templhs[q][w]);
-                    }
-                }
                 for(size_t q = 0; q < lhs_multi_ctr[i].size(); q++){
                     evaluator.add_inplace(lhs_multi_ctr[i][q], templhsctr[q]);
                 }
@@ -957,23 +950,13 @@ void OMR3(){
     NTL_EXEC_RANGE_END;
 
     for(int i = 1; i < numcores; i++){
-        for(size_t q = 0; q < lhs_multi[i].size(); q++){
-            for(size_t w = 0; w < lhs_multi[i][q].size(); w++){
-                evaluator.add_inplace(lhs_multi[0][q][w], lhs_multi[i][q][w]);
-            }
-        }
         for(size_t q = 0; q < lhs_multi_ctr[i].size(); q++){
             evaluator.add_inplace(lhs_multi_ctr[0][q], lhs_multi_ctr[i][q]);
         }
         evaluator.add_inplace(rhs_multi[0], rhs_multi[i]);
     }
 
-    while(context.last_parms_id() != lhs_multi[0][0][0].parms_id()){
-            for(size_t q = 0; q < lhs_multi[0].size(); q++){
-                for(size_t w = 0; w < lhs_multi[0][q].size(); w++){
-                    evaluator.mod_switch_to_next_inplace(lhs_multi[0][q][w]);
-                }
-            }
+    while(context.last_parms_id() != lhs_multi_ctr[0][0].parms_id()){
             for(size_t q = 0; q < lhs_multi_ctr[0].size(); q++){
                 evaluator.mod_switch_to_next_inplace(lhs_multi_ctr[0][q]);
             }
@@ -986,11 +969,6 @@ void OMR3(){
 
     stringstream data_streamdg, data_streamdg2;
     auto digsize = rhs_multi[0].save(data_streamdg);
-    for(size_t q = 0; q < lhs_multi[0].size(); q++){
-        for(size_t w = 0; w < lhs_multi[0][q].size(); w++){
-            digsize += lhs_multi[0][q][w].save(data_streamdg2);
-        }
-    }
     for(size_t q = 0; q < lhs_multi_ctr[0].size(); q++){
         digsize += lhs_multi_ctr[0][q].save(data_streamdg2);
     }
@@ -999,7 +977,7 @@ void OMR3(){
     // step 5. receiver decoding
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions,OMRtwoM,repeatition_glb,seed_glb);
     time_start = chrono::high_resolution_clock::now();
-    auto res = receiverDecodingOMR3(lhs_multi[0], lhs_multi_ctr[0], bipartite_map[0], rhs_multi[0],
+    auto res = receiverDecodingOMR3(lhs_multi_ctr[0], bipartite_map[0], rhs_multi[0],
                         poly_modulus_degree, secret_key, context, numOfTransactions);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
