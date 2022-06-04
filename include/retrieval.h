@@ -112,7 +112,8 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
 // Each msg is randomly assigned to one accumulator
 // Then we repeat this process C times and gather partial information to reduce failure probability
 void randomizedIndexRetrieval_opt(vector<Ciphertext>& buckets, vector<Ciphertext>& SIC, const SEALContext& context, 
-                                        const PublicKey& BFVpk, int counter, const size_t& degree, size_t C, size_t C_prime, size_t num_buckets){ 
+                                        const PublicKey& BFVpk, int counter, const size_t& degree, size_t C, size_t C_prime, size_t num_buckets,
+                                        size_t slots_per_bucket = 3){ 
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
     Encryptor encryptor(context, BFVpk);
@@ -121,7 +122,6 @@ void randomizedIndexRetrieval_opt(vector<Ciphertext>& buckets, vector<Ciphertext
     if((counter%degree) == 0){ // first msg
         buckets.resize(C_prime);
         for(size_t i = 0; i < C_prime; i++){
-            buckets[i].resize(2); // 2 cts allow 65537^2 total messages, which is in general enough so we hard code this.
             encryptor.encrypt_zero(buckets[i]);
             while(buckets[i].parms_id() != SIC[0].parms_id()){
                 evaluator.mod_switch_to_next_inplace(buckets[i]);
@@ -139,9 +139,9 @@ void randomizedIndexRetrieval_opt(vector<Ciphertext>& buckets, vector<Ciphertext
         Ciphertext temp;
         for(size_t j = 0; j < C; j++){
             size_t index = rand()%num_buckets;
-            index += (j * 3 * num_buckets);
-            size_t the_scalar_mtx = index/(degree / num_buckets / 3 * num_buckets * 3);
-            index %= (degree / num_buckets / 3 * num_buckets * 3);
+            index += (j * slots_per_bucket * num_buckets); // 2 slots allow 65537^2 total messages
+            size_t the_scalar_mtx = index/(degree / num_buckets / slots_per_bucket * num_buckets * slots_per_bucket);
+            index %= (degree / num_buckets / slots_per_bucket * num_buckets * slots_per_bucket);
             pod_matrices[the_scalar_mtx][index] = counter/65537;
             pod_matrices[the_scalar_mtx][index + num_buckets] = counter%65537;
             pod_matrices[the_scalar_mtx][index + 2*num_buckets] = 1;

@@ -108,7 +108,8 @@ void decodeIndicesRandom(map<int, int>& pertinentIndices, const vector<vector<Ci
 
 // Randomized decoding for OMR optimized
 void decodeIndicesRandom_opt(map<int, int>& pertinentIndices, const vector<Ciphertext>& buckets, size_t C, size_t num_buckets,
-                                     const size_t& degree, const SecretKey& secret_key, const SEALContext& context){
+                                     const size_t& degree, const SecretKey& secret_key, const SEALContext& context,
+                                     size_t slots_per_bucket = 3){
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
@@ -118,7 +119,7 @@ void decodeIndicesRandom_opt(map<int, int>& pertinentIndices, const vector<Ciphe
     Plaintext plain_result;
     decryptor.decrypt(buckets[0], plain_result);
     batch_encoder.decode(plain_result, countertemp);
-    for(size_t i = 2*num_buckets; i < 3*num_buckets; i++){
+    for(size_t i = 2*num_buckets; i < slots_per_bucket*num_buckets; i++){
         realNumOfPertinentMsg += countertemp[i]; // first sumup the counters to see how many messages are there
     }
 
@@ -127,10 +128,10 @@ void decodeIndicesRandom_opt(map<int, int>& pertinentIndices, const vector<Ciphe
         decryptor.decrypt(buckets[i], plain_result);
         batch_encoder.decode(plain_result, plain_bucket);
         
-        for(size_t j = 0; j < degree/num_buckets/3; j++){
+        for(size_t j = 0; j < degree/num_buckets/slots_per_bucket; j++){
             for(size_t k = 0; k < num_buckets; k++){
-                if(plain_bucket[k + 2*num_buckets + j*3*num_buckets] == 1){
-                    uint64_t index = plain_bucket[k + 0*num_buckets + j*3*num_buckets]*65537 + plain_bucket[k + 1*num_buckets + j*3*num_buckets];
+                if(plain_bucket[k + 2*num_buckets + j*slots_per_bucket*num_buckets] == 1){
+                    uint64_t index = plain_bucket[k + 0*num_buckets + j*slots_per_bucket*num_buckets]*65537 + plain_bucket[k + 1*num_buckets + j*slots_per_bucket*num_buckets];
                     if(pertinentIndices.find(index) == pertinentIndices.end()){
                         pertinentIndices.insert(pair<int, int>(index, counter++));
                     }
