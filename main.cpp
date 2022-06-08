@@ -1032,9 +1032,9 @@ void GOMR1(){
     auto degree = poly_modulus_degree;
     parms.set_poly_modulus_degree(poly_modulus_degree);
     auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28,
-                                                                            39, 60, 60, 60, 60,
+                                                                            60, 60, 60, 60, 60,
                                                                             60, 60, 60, 60, 60, 60,
-                                                                            32, 30, 60 });
+                                                                            60, 30, 60 });
     parms.set_coeff_modulus(coeff_modulus);
     parms.set_plain_modulus(65537);
 
@@ -1096,11 +1096,11 @@ void GOMR1(){
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,1};
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;
-    coeff_modulus_last.erase(coeff_modulus_last.begin() + 2, coeff_modulus_last.end()-1);
+    coeff_modulus_last.erase(coeff_modulus_last.begin() + 3, coeff_modulus_last.end() - 1);
     EncryptionParameters parms_last = parms;
     parms_last.set_coeff_modulus(coeff_modulus_last);
     SEALContext context_last = SEALContext(parms_last, true, sec_level_type::none);
@@ -1112,6 +1112,7 @@ void GOMR1(){
     util::set_poly(
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_last.data().data() + degree * (coeff_modulus_last.size() - 1));
+    vector<int> steps_last = {1,2,4,8,16};
     KeyGenerator keygen_last(context_last, sk_last);
     keygen_last.create_galois_keys(steps, gal_keys_last);
     //////////////////////////////////////
