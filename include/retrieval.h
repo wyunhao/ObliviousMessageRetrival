@@ -107,6 +107,24 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
     return;
 }
 
+// consider partySize = 3, index = 6 = 110 in binary representation
+// the encoded output would be 010100, as each single bit in the original representation
+// will be expanded into log2(partySize + 1) - bits
+size_t encodeIndexWithPartySize(size_t index, int partySize)
+{
+    size_t res = 0;
+    int counter = 0;
+    int shift = log2(partySize + 1); // to fit in partySize
+
+    while (index) {
+        res += (index & 1) << (shift * counter);
+        counter++;
+        index = index>>1;
+    }
+
+    return res;
+}
+
 // For randomized index retrieval
 // We first have 2 ciphertexts, as we need to represent N ~= 500,000, so sqrt(N) < 65537
 // We also need a counter
@@ -114,13 +132,13 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
 // Then we repeat this process C times and gather partial information to reduce failure probability
 void randomizedIndexRetrieval_opt(vector<Ciphertext>& buckets, vector<Ciphertext>& SIC, const SEALContext& context, 
                                         const PublicKey& BFVpk, int counter, const size_t& degree, size_t C, size_t C_prime, size_t num_buckets,
-                                        size_t slots_per_bucket = 3){ 
+                                        int partySize = 1, size_t slots_per_bucket = 3) {
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
     Encryptor encryptor(context, BFVpk);
     srand(time(NULL));
 
-    if((counter%degree) == 0){ // first msg
+    if((counter % degree) == 0){ // first msg
         buckets.resize(C_prime);
         for(size_t i = 0; i < C_prime; i++){
             encryptor.encrypt_zero(buckets[i]);
@@ -139,13 +157,21 @@ void randomizedIndexRetrieval_opt(vector<Ciphertext>& buckets, vector<Ciphertext
         
         Ciphertext temp;
         for(size_t j = 0; j < C; j++){
-            size_t index = rand()%num_buckets;
+            size_t index = rand() % num_buckets;
             index += (j * slots_per_bucket * num_buckets); // 2 slots allow 65537^2 total messages
-            size_t the_scalar_mtx = index/(degree / num_buckets / slots_per_bucket * num_buckets * slots_per_bucket);
+            size_t the_scalar_mtx = index / (degree / num_buckets / slots_per_bucket * num_buckets * slots_per_bucket);
             index %= (degree / num_buckets / slots_per_bucket * num_buckets * slots_per_bucket);
-            pod_matrices[the_scalar_mtx][index] = counter/65537;
-            pod_matrices[the_scalar_mtx][index + num_buckets] = counter%65537;
-            pod_matrices[the_scalar_mtx][index + 2*num_buckets] = 1;
+
+            size_t encoded_counter = encodeIndexWithPartySize(counter, partySize);
+            size_t base_value = encoded_counter / 65537;
+            for (int s = 0; s < slots_per_bucket - 3; s++) {
+                pod_matrices[the_scalar_mtx][index + (slots_per_bucket - 3 - s) * num_buckets] = base_value % 65537;
+                base_value /= 65537;
+            }
+            pod_matrices[the_scalar_mtx][index] = base_value;
+            pod_matrices[the_scalar_mtx][index + (slots_per_bucket - 2) * num_buckets] = encoded_counter % 65537;
+
+            pod_matrices[the_scalar_mtx][index + (slots_per_bucket - 1) * num_buckets] = 1;
         }
 
         for(size_t j = 0; j < C_prime; j++){

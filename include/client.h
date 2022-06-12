@@ -7,6 +7,24 @@
 using namespace seal;
 #define PROFILE
 
+// consider index = 010100, partySize = 3, pv_value = 1, the final output would be 110
+// as each log2(partySize + 1) - bits will be mapped back to a single bit {1,0}
+// if any log2(partySize + 1) - bits pattern does not match the pv_value, collision detected
+int extractIndexWithoutCollision(uint64_t index, int partySize, int pv_value) {
+    int res = 0, counter = 0;
+
+    while (index) {
+        if (index & partySize) {
+            res += 1 << counter;
+            if ((index & partySize) != pv_value)
+                return -1;
+        }
+        index = index >> (int) (log2(partySize + 1));
+        counter++;
+    }
+    return res;
+}
+
 // Deterministic decoding for OMD
 vector<uint64_t> decodeIndicesOMD(const Ciphertext& indexPack, const int& num_of_transactions, const size_t& degree, const SecretKey& secret_key, const SEALContext& context){
     vector<uint64_t> pertinentIndices;
@@ -112,20 +130,21 @@ void decodeIndicesRandom(map<int, pair<int, int>>& pertinentIndices, const vecto
 }
 
 // Randomized decoding for OMR optimized
+// decodeIndicesRandom_opt(pertinentIndices, lhsCounter, 5, 512, degree, secret_key, context);
 void decodeIndicesRandom_opt(map<int, pair<int, int>>& pertinentIndices, const vector<Ciphertext>& buckets, size_t C, size_t num_buckets,
-                                     const size_t& degree, const SecretKey& secret_key, const SEALContext& context,
-                                     size_t slots_per_bucket = 3){
+                             const size_t& degree, const SecretKey& secret_key, const SEALContext& context, int partySize = 1,
+                             size_t slots_per_bucket = 3){
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    int counter = 0;
-    int realNumOfPertinentMsg = 0;
+    int counter = 0, detectedSum = 0;
+    int pvSumOfPertinentMsg = 0;
     vector<uint64_t> countertemp(degree);
     Plaintext plain_result;
     decryptor.decrypt(buckets[0], plain_result);
     batch_encoder.decode(plain_result, countertemp);
-    for(size_t i = 2*num_buckets; i < slots_per_bucket*num_buckets; i++){
-        realNumOfPertinentMsg += countertemp[i]; // first sumup the counters to see how many messages are there
+    for(size_t i = (slots_per_bucket - 1) * num_buckets; i < slots_per_bucket * num_buckets; i++){
+        pvSumOfPertinentMsg += countertemp[i]; // first sumup the pv_values for all pertinent messages
     }
 
     for(size_t i = 0; i < buckets.size(); i++){
@@ -133,24 +152,33 @@ void decodeIndicesRandom_opt(map<int, pair<int, int>>& pertinentIndices, const v
         decryptor.decrypt(buckets[i], plain_result);
         batch_encoder.decode(plain_result, plain_bucket);
         
-        for(size_t j = 0; j < degree/num_buckets/slots_per_bucket; j++){
+        for(size_t j = 0; j < degree / num_buckets / slots_per_bucket; j++){
             for(size_t k = 0; k < num_buckets; k++){
-                if(plain_bucket[k + 2*num_buckets + j*slots_per_bucket*num_buckets] == 1){
-                    uint64_t index = plain_bucket[k + 0*num_buckets + j*slots_per_bucket*num_buckets]*65537 + plain_bucket[k + 1*num_buckets + j*slots_per_bucket*num_buckets];
-                    if(pertinentIndices.find(index) == pertinentIndices.end()){
-                        pair<int, int> temp(counter++, 1);
-                        pertinentIndices.insert(pair<int, pair<int, int>>(index, temp));
+                uint64_t pv_value = plain_bucket[k + (slots_per_bucket - 1) * num_buckets + j * slots_per_bucket * num_buckets];
+                if (pv_value > partySize)
+                    continue;
+                if (pv_value >= 1) {
+                    uint64_t index = 0;
+                    for (int s = 0; s < slots_per_bucket-1; s++) {
+                        index = index * 65537 + plain_bucket[k + s * num_buckets + j * slots_per_bucket * num_buckets];
+                    }
+                    int real_index = extractIndexWithoutCollision(index, partySize, pv_value);
+                    if(real_index != -1 && pertinentIndices.find(real_index) == pertinentIndices.end())
+                    {
+                        detectedSum += pv_value;
+                        pair<int, int> temp(counter++, pv_value);
+                        pertinentIndices.insert(pair<int, pair<int, int>>(real_index, temp));
                     }
                 }
-                if(counter == realNumOfPertinentMsg)
-                break;
+                if(detectedSum == pvSumOfPertinentMsg)
+                    break;
             }
         }
     }
 
-    if(counter != realNumOfPertinentMsg)
+    if(detectedSum != pvSumOfPertinentMsg)
     {
-        cerr << "Overflow: only got " << counter << " pertinent messages' indices."  << endl;
+        cerr << "Overflow: detected pv sum: " << detectedSum << " less than expected: " << pvSumOfPertinentMsg << endl;
         exit(1);
     }
 }
