@@ -3,8 +3,8 @@
 using namespace seal;
 
 int numcores = 4;
-int OMRtwoM = 100;
-int OMRthreeM = 100;
+int OMRtwoM = 6;
+int OMRthreeM = 6;
 int mod_switch_counter = 0; 
 GaloisKeys gal_keys_next; 
 GaloisKeys gal_keys_last;
@@ -13,9 +13,9 @@ vector<vector<int>> weights_glb;
 int repeatition_glb = 5;
 int seed_glb = 3;
 size_t C_glb = 5;
-int numOfTransactions_glb = 1<<18;
-size_t poly_modulus_degree_glb = 32768;
-size_t num_of_pertinent_msgs_glb = 50;
+int numOfTransactions_glb = 4096;
+size_t poly_modulus_degree_glb = 4096;
+size_t num_of_pertinent_msgs_glb = 2;
 int party_size_glb = 3;
 int repetition_glb = 5;
 
