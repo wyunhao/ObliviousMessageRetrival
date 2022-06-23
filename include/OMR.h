@@ -526,7 +526,7 @@ void OMR3(){
 
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRthreeM, repeatition_glb, seed_glb);
 
-    int number_of_ct = repetition_glb * 4 * 512 / (poly_modulus_degree_glb / 512 / 4 * 4 * 512);
+    int number_of_ct = repetition_glb * 3 * 512 / (poly_modulus_degree_glb / 512 / 3 * 3 * 512);
 
     NTL_EXEC_RANGE(numcores, first, last);
     for(int i = first; i < last; i++) {

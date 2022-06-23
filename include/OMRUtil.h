@@ -182,7 +182,7 @@ void serverOperations3therest(vector<Ciphertext>& lhsCounter, vector<vector<int>
         for(size_t j = 0; j < expandedSIC.size(); j++)
             if(!expandedSIC[j].is_ntt_form())
                 evaluator.transform_to_ntt_inplace(expandedSIC[j]);
-        
+
         // step 2. randomized retrieval
         randomizedIndexRetrieval_opt(lhsCounter, expandedSIC, context, public_key, i, degree, repetition_glb, numberOfCt, 512, partySize, slotPerBucket);
         // step 3-4. multiply weights and pack them
