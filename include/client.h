@@ -283,18 +283,17 @@ long div_mod(long a, long b, long mod = 65537){
 }
 
 inline
-void get_ratio_mult_and_subtract(vector<int>& output, const vector<int>& input, const int& whichItem, const int& numToSolve, int& k){
-    vector<int> temp(input.size());
-    if(k == -1){
-        k = div_mod(output[whichItem], input[whichItem]);
-        mult_scalar_vec(temp, input, k);
-        subtract_two_vec_inplace(output, temp);
-    }
-    else{
-        mult_scalar_vec(temp, input, k);
-        subtract_two_vec_inplace(output, temp, numToSolve);
-    }
-    
+void get_ratio_mult_and_subtract(vector<int>& outputLhs, const vector<int>& inputLhs,
+                                 vector<int>& outputRhs, const vector<int>& inputRhs,
+                                 const int whichItem, const int numToSolve = -1)
+{
+    vector<int> temp(inputLhs.size());
+    int k = div_mod(outputLhs[whichItem], inputLhs[whichItem]);
+    mult_scalar_vec(temp, inputLhs, k);
+    subtract_two_vec_inplace(outputLhs, temp);
+
+    mult_scalar_vec(temp, inputRhs, k);
+    subtract_two_vec_inplace(outputRhs, temp, numToSolve);
 }
 
 inline
@@ -310,8 +309,8 @@ vector<long> singleSolve(const long& a, const vector<int>& toSolve, long mod = 6
 // Performs Gaussian elimination using the functions above
 vector<vector<long>> equationSolving(vector<vector<int>>& lhs, vector<vector<int>>& rhs, const int& numToSolve = 306){
     vector<int> recoder(lhs[0].size(), -1);
+    vector<vector<long>> res(recoder.size());
     size_t counter = 0;
-    int rcd = 0;
 
     while(counter < recoder.size()){
         for(size_t i = 0; i < lhs.size(); i++){
@@ -320,26 +319,27 @@ vector<vector<long>> equationSolving(vector<vector<int>>& lhs, vector<vector<int
                     continue;
                 }
                 recoder[counter] = i;
-                rcd = lhs[i][counter];
                 break;
             }
         }
-        if(recoder[counter] == -1){
+        if(recoder[counter] == -1) {
             cerr << "no solution" << endl;
             return vector<vector<long>>(0);
         }
-        for(size_t i = 0; i < lhs.size(); i++){
-            if ((lhs[i][counter] != 0) && (lhs[i][counter] != rcd))
-            {
-                int k = -1;
-                get_ratio_mult_and_subtract(lhs[i], lhs[recoder[counter]], counter, numToSolve, k);
-                get_ratio_mult_and_subtract(rhs[i], rhs[recoder[counter]], counter, numToSolve, k);
+
+        for(size_t i = 0; i < lhs.size(); i++) {
+            if ((lhs[i][counter] != 0) && (i != recoder[counter])) {
+                get_ratio_mult_and_subtract(lhs[i], lhs[recoder[counter]], rhs[i], rhs[recoder[counter]], counter, numToSolve);
+                if (all_of(lhs[i].begin(), lhs[i].end(), [](int j) { return j==0; })) {
+                    lhs.erase(lhs.begin() + i);
+                    rhs.erase(rhs.begin() + i);
+                    return equationSolving(lhs, rhs, numToSolve);
+                }
             }
         }
         counter++;
     }
 
-    vector<vector<long>> res(recoder.size());
     counter = 0;
     for(size_t i = 0; i < recoder.size(); i++){
         res[i] = singleSolve(lhs[recoder[counter]][counter], rhs[recoder[counter]]);

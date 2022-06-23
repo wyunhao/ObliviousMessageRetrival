@@ -3,6 +3,7 @@
 #include "include/retrieval.h"
 #include "include/client.h"
 #include "include/LoadAndSaveUtils.h"
+#include "include/Equation.h"
 #include <NTL/BasicThreadPool.h>
 #include <NTL/ZZ.h>
 #include <thread>
