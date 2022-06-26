@@ -323,7 +323,6 @@ vector<vector<long>> equationSolving(vector<vector<int>>& lhs, vector<vector<int
             }
         }
         if(recoder[counter] == -1) {
-            cerr << "no solution" << endl;
             return vector<vector<long>>(0);
         }
 

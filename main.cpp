@@ -23,18 +23,20 @@ int main() {
     cout << "| 13.GOMR2 Single Thread             |" << endl;
     cout << "| 14.GOMR2 Two Threads               |" << endl;
     cout << "| 15.GOMR2 Four Threads              |" << endl;
+    cout << "| 16.GOMR1_OM Single Threads         |" << endl;
+    cout << "| 17.GOMR1_OM_BFV Single Threads     |" << endl;
     cout << "+------------------------------------+" << endl;
 
     int selection = 0;
     bool valid = true;
     do
     {
-        cout << endl << "> Run demos (1 ~ 15) or exit (0): ";
+        cout << endl << "> Run demos (1 ~ 17) or exit (0): ";
         if (!(cin >> selection))
         {
             valid = false;
         }
-        else if (selection < 0 || selection > 15)
+        else if (selection < 0 || selection > 17)
         {
             valid = false;
         }
@@ -44,7 +46,7 @@ int main() {
         }
         if (!valid)
         {
-            cout << "  [Beep~~] valid option: type 0 ~ 15" << endl;
+            cout << "  [Beep~~] valid option: type 0 ~ 17" << endl;
             cin.clear();
             cin.ignore(numeric_limits<streamsize>::max(), '\n');
         }
@@ -125,9 +127,17 @@ int main() {
             GOMR2();
             break;
 
+        case 16:
+            numcores = 1;
+            GOMR1_ObliviousMultiplexer();
+            break;
+
+        case 17:
+            numcores = 1;
+            GOMR1_ObliviousMultiplexer_BFV();
+            break;
+
         case 0:
             return 0;
         }
-    
-    
 }

@@ -169,6 +169,40 @@ void expandSIC_Alt(vector<Ciphertext>& expanded, Ciphertext& toExpand, const Gal
     }
 }
 
+// encrypt the SK times the targetID, for example, if SK={1,2,3} and targetId={7,5}
+// then the result will be a 6x1 vector: {7,5,14,10,21,15,0,0}, padded with zero's
+void genSwitchingKeyPVWPackedWithId(vector<Ciphertext>& switchingKey, const vector<int>& targetId, const SEALContext& context, const size_t& degree, 
+                         const PublicKey& BFVpk, const SecretKey& BFVsk, const PVWsk& regSk, const PVWParam& params){ // TODOmulti: can be multithreaded easily
+    
+    BatchEncoder batch_encoder(context);
+    Encryptor encryptor(context, BFVpk);
+    encryptor.set_secret_key(BFVsk);
+
+    int tempn = 1;
+    for(; tempn < (params.n + params.ell) * targetId.size(); tempn *= 2){}
+    for(int j = 0; j < params.ell; j++) {
+        // encrypt into ell BFV ciphertexts
+        vector<uint64_t> skInt(degree);
+        for(size_t i = 0; i < degree; i++) {
+            auto tempindex = i%uint64_t(tempn);
+            if(int(tempindex) >= (params.n + params.ell) * targetId.size()) {
+                skInt[i] = 0;
+            } else {
+                int sk_ind = tempindex / targetId.size();
+                int id_ind = tempindex % targetId.size();
+                if (sk_ind >= params.n) {
+                    skInt[i] = uint64_t(65537 - targetId[id_ind]); // for b part
+                } else {
+                    skInt[i] = uint64_t((regSk[j][sk_ind].ConvertToInt() * targetId[id_ind]) % 65537);
+                }
+            }
+        }
+        Plaintext plaintext;
+        batch_encoder.encode(skInt, plaintext);
+        encryptor.encrypt_symmetric(plaintext, switchingKey[j]);
+    }
+}
+
 // take PVW sk's and output switching key, which is a ciphertext of size \ell*n, where n is the PVW secret key dimension
 void genSwitchingKeyPVWPacked(vector<Ciphertext>& switchingKey, const SEALContext& context, const size_t& degree, 
                          const PublicKey& BFVpk, const SecretKey& BFVsk, const PVWsk& regSk, const PVWParam& params){ // TODOmulti: can be multithreaded easily
@@ -226,6 +260,58 @@ vector<seal::Serializable<Ciphertext>> genSwitchingKeyPVWPacked(const SEALContex
     }
 
     return switchingKey;
+}
+
+
+// compute b - as with packed swk but also only requires one rot key
+// const vector<PVWCiphertext>& toPack,
+void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const vector<vector<uint64_t>>& cluePoly,
+                                            vector<Ciphertext>& switchingKey, const GaloisKeys& gal_keys,
+                                            const SEALContext& context, const PVWParam& param) { 
+
+    MemoryPoolHandle my_pool = MemoryPoolHandle::New(true);
+    auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
+
+    int tempn;
+    for (tempn = 1; tempn < (param.n + param.ell) * id_size_glb; tempn*=2) {}
+
+    Evaluator evaluator(context);
+    BatchEncoder batch_encoder(context);
+    size_t slot_count = batch_encoder.slot_count();
+    if (cluePoly.size() > slot_count) {
+        cerr << "Please pack at most " << slot_count << " PVW ciphertexts at one time." << endl;
+        return;
+    }
+
+
+    for (int i = 0; i < tempn; i++) { // 8192 number to multiply
+        vector<uint64_t> vectorOfInts(cluePoly.size()); // 8192 msgs each time
+        for (size_t j = 0; j < cluePoly.size(); j++){
+            int the_index = (i+int(j))%tempn;
+            if (the_index >= (param.n + param.ell) * id_size_glb) {
+                vectorOfInts[j] = 0;
+            } else {
+                vectorOfInts[j] = cluePoly[j][the_index];
+            }
+        }
+
+        Plaintext plaintext;
+        batch_encoder.encode(vectorOfInts, plaintext);
+        
+        // times (sk, -1) together with targetId to (a, b)
+        for (int j = 0; j < param.ell; j++) {
+            if (i == 0) {
+                evaluator.multiply_plain(switchingKey[j], plaintext, output[j]);
+            } else {
+                Ciphertext temp;
+                evaluator.multiply_plain(switchingKey[j], plaintext, temp);
+                evaluator.add_inplace(output[j], temp);
+            }
+            // rotate one slot at a time
+            evaluator.rotate_rows_inplace(switchingKey[j], 1, gal_keys);
+        }
+    }
+    MemoryManager::SwitchProfile(std::move(old_prof));
 }
 
 

@@ -6,14 +6,16 @@
 #include "client.h"
 #include "LoadAndSaveUtils.h"
 #include "OMRUtil.h"
+#include "global.h"
 #include <NTL/BasicThreadPool.h>
 #include <NTL/ZZ.h>
 #include <thread>
 
 using namespace seal;
 
-vector<vector<uint64_t>> preparingGroupCluePolynomial(PVWpk& pk, int numOfTransactions, int pertinentMsgNum,
-                                                      const PVWParam& params, int partySize = 1, bool formultitest = false){
+
+vector<vector<uint64_t>> preparingTransactionsFormal(vector<int>& pertinentMsgIndices, PVWpk& pk, int numOfTransactions, int pertinentMsgNum,
+                                                      const PVWParam& params, int partySize = 1) {
     srand (time(NULL));
 
     vector<int> msgs(numOfTransactions);
@@ -26,6 +28,7 @@ vector<vector<uint64_t>> preparingGroupCluePolynomial(PVWpk& pk, int numOfTransa
             temp = rand() % numOfTransactions;
         }
         msgs[temp] = 1;
+        pertinentMsgIndices.push_back(temp);
         i++;
     }
 
@@ -34,7 +37,15 @@ vector<vector<uint64_t>> preparingGroupCluePolynomial(PVWpk& pk, int numOfTransa
     for(int i = 0; i < numOfTransactions; i++){
         PVWCiphertext tempclue;
 
-        // w.l.o.g assume the index of recipient within party is 0, i.e., the first in the group
+        // create clues with new SK for the rest of messages in the same group
+        for (int p = 0; p < partySize - 1; p++) {
+            PVWCiphertext tempclue;
+            auto sk2 = PVWGenerateSecretKey(params);
+            PVWEncSK(tempclue, zeros, sk2, params);
+            saveClues(tempclue, i*partySize + p);
+        }
+
+        // w.l.o.g assume the index of recipient within party is |partySize - 1|, i.e., the last in the group
         if(msgs[i]){
             cout << i << " ";
             PVWEncPK(tempclue, zeros, pk, params);
@@ -46,64 +57,7 @@ vector<vector<uint64_t>> preparingGroupCluePolynomial(PVWpk& pk, int numOfTransa
             auto sk2 = PVWGenerateSecretKey(params);
             PVWEncSK(tempclue, zeros, sk2, params);
         }
-        saveClues(tempclue, i*partySize);
-
-        // create clues with new SK for the rest of messages in the same group
-        for (int p = 1; p < partySize; p++) {
-            PVWCiphertext tempclue;
-            auto sk2 = PVWGenerateSecretKey(params);
-            PVWEncSK(tempclue, zeros, sk2, params);
-            saveClues(tempclue, i*partySize + p);
-        }
-    }
-    cout << endl;
-    return ret;
-}
-
-
-vector<vector<uint64_t>> preparingTransactionsFormal(PVWpk& pk, int numOfTransactions, int pertinentMsgNum,
-                                                      const PVWParam& params, int partySize = 1, bool formultitest = false){
-    srand (time(NULL));
-
-    vector<int> msgs(numOfTransactions);
-    vector<vector<uint64_t>> ret;
-    vector<int> zeros(params.ell, 0);
-
-    for(int i = 0; i < pertinentMsgNum;){
-        auto temp = rand() % numOfTransactions;
-        while(msgs[temp]){
-            temp = rand() % numOfTransactions;
-        }
-        msgs[temp] = 1;
-        i++;
-    }
-
-    cout << "Expected Message Indices: ";
-
-    for(int i = 0; i < numOfTransactions; i++){
-        PVWCiphertext tempclue;
-
-        // w.l.o.g assume the index of recipient within party is 0, i.e., the first in the group
-        if(msgs[i]){
-            cout << i << " ";
-            PVWEncPK(tempclue, zeros, pk, params);
-            ret.push_back(loadDataSingle(i));
-            expectedIndices.push_back(uint64_t(i));
-        }
-        else
-        {
-            auto sk2 = PVWGenerateSecretKey(params);
-            PVWEncSK(tempclue, zeros, sk2, params);
-        }
-        saveClues(tempclue, i*partySize);
-
-        // create clues with new SK for the rest of messages in the same group
-        for (int p = 1; p < partySize; p++) {
-            PVWCiphertext tempclue;
-            auto sk2 = PVWGenerateSecretKey(params);
-            PVWEncSK(tempclue, zeros, sk2, params);
-            saveClues(tempclue, i*partySize + p);
-        }
+        saveClues(tempclue, i*partySize + partySize - 1);
     }
     cout << endl;
     return ret;
@@ -116,9 +70,27 @@ Ciphertext serverOperations1obtainPackedSIC(vector<PVWCiphertext>& SICPVW, vecto
     
     vector<Ciphertext> packedSIC(params.ell);
     computeBplusASPVWOptimized(packedSIC, SICPVW, switchingKey, gal_keys, context, params);
+    cout << "after computeBplusASPVWOptimized" << endl;
 
     int rangeToCheck = 850; // range check is from [-rangeToCheck, rangeToCheck-1]
     newRangeCheckPVW(packedSIC, rangeToCheck, relin_keys, degree, context, params);
+    cout << "after newRangeCheckPVW" << endl;
+
+    return packedSIC[0];
+}
+
+// Phase 1, obtaining PV's based on encrypted targetId
+Ciphertext serverOperations1obtainPackedSICWithCluePoly(vector<vector<uint64_t>>& cluePoly, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
+                            const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params, const int numOfTransactions){
+    Evaluator evaluator(context);
+    
+    vector<Ciphertext> packedSIC(params.ell);
+    computeBplusASPVWOptimizedWithCluePoly(packedSIC, cluePoly, switchingKey, gal_keys, context, params);
+    cout << "after computeBplusASPVWOptimized" << endl;
+
+    int rangeToCheck = 850; // range check is from [-rangeToCheck, rangeToCheck-1]
+    newRangeCheckPVW(packedSIC, rangeToCheck, relin_keys, degree, context, params);
+    cout << "after newRangeCheckPVW" << endl;
 
     return packedSIC[0];
 }
@@ -456,7 +428,6 @@ void assignVariable(vector<vector<long>>& res, vector<int>& lhs, int rhs) {
     if (res.size() != lhs.size())
         cerr << "Coefficient and variable size not match." << endl;
 
-    srand (time(NULL));
     int lastIndex = lhs.size() - 1;
 
     for (int i = lhs.size(); i > 0; i--) {
@@ -492,8 +463,7 @@ void updateEquation(vector<vector<long>>& res, vector<vector<int>>& lhs, vector<
 }
 
 // Pick random Zq elements as ID of recipients, in form of a (partySize x idSize) matrix.
-vector<vector<int>>  initializeRecipientId(int partySize, int idSize, int mod = 65537) {
-    srand (time(NULL));
+vector<vector<int>> initializeRecipientId(int partySize, int idSize, int mod = 65537) {
     vector<vector<int>> ids(partySize, vector<int> (idSize, -1)); 
 
     for (int i = 0; i < ids.size(); i++) {
@@ -505,9 +475,93 @@ vector<vector<int>>  initializeRecipientId(int partySize, int idSize, int mod = 
     return ids;
 }
 
-// Read in the a part as RHS values for Oblivious Multiplexer polynomial.
-void prepareClueRhs(vector<vector<int>>& rhs, const vector<PVWCiphertext> clues, int index) {
+// Read in the a/b[i] part as a 1 x partySize RHS vector for Oblivious Multiplexer polynomial.
+void prepareClueRhs(vector<vector<int>>& rhs, const vector<PVWCiphertext> clues, int index, bool prepare = false) {
     for (int i = 0; i < rhs.size(); i++) {
-        rhs[i][0] = clues[i].a[index].ConvertToInt();
+        if (index >= clues[i].a.GetLength()) {
+            if (prepare) {
+                int temp = clues[i].b[index - clues[i].a.GetLength()].ConvertToInt() - 16384;
+                rhs[i][0] = temp < 0 ? temp + 65537 : temp % 65537;
+            } else {
+                rhs[i][0] = clues[i].b[index - clues[i].a.GetLength()].ConvertToInt();
+            }
+        } else {
+            rhs[i][0] = clues[i].a[index].ConvertToInt();
+        }
+    }
+}
+
+// solve the equation system with rhs to be the clues, and lhs to be the ids via equationSolving
+// for non-full rank matrices, rand values are assigned to variables.
+vector<vector<long>> solveCluePolynomial(const PVWParam& params, size_t counter, vector<vector<int>> ids, int index, bool prepare = false,
+                                         int partySize = party_size_glb, int idSize = id_size_glb) {
+    vector<vector<int>> lhs = ids;
+    vector<vector<int>> rhs(partySize, vector<int>(1, -1));
+    vector<vector<long>> tryRes;
+    vector<PVWCiphertext> clues;
+
+    loadClues(clues, counter * partySize, counter * partySize + partySize, params);
+    prepareClueRhs(rhs, clues, index, prepare);
+
+    tryRes = equationSolving(lhs, rhs, -1);
+    if (tryRes.empty()) {
+        tryRes.resize(lhs[0].size(), vector<long>(1));
+        while (!lhs.empty()) {
+            assignVariable(tryRes, lhs[lhs.size() - 1], rhs[rhs.size() - 1][0]);
+            lhs.pop_back();
+            rhs.pop_back();
+            updateEquation(tryRes, lhs, rhs);
+        }
+    }
+    return tryRes;
+}
+
+void verify(const vector<int>& targetId, int index) {
+    vector<uint64_t> polyFlat = loadDataSingle(index, "cluePoly", 454 * id_size_glb);
+    vector<vector<long>> cluePolynomial(454, vector<long>(id_size_glb));
+    vector<long> res(454, 0);
+
+    for (int i = 0; i < 454; i++) {
+        for(int j = 0; j < id_size_glb; j++) {
+            res[i] = (res[i] + polyFlat[i * id_size_glb + j] * targetId[j]) % 65537;
+        }
+    }
+
+    cout << "VERIFY ---> " << index << endl;
+    cout << res << endl;
+}
+
+// similar to preparingTransactionsFormal but for gOMR with Oblivious Multiplexer.
+void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk& pk, int numOfTransactions,int pertinentMsgNum,
+                                  const PVWParam& params, const vector<int>& targetId, bool prepare = false, int clueLength = 454) {
+    vector<vector<int>> ids;
+    bool check = false;
+
+    cout << pertinentMsgIndices << endl;
+
+    for(int i = 0; i < numOfTransactions; i++){
+        if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
+            check = true;
+            ids = initializeRecipientId(party_size_glb - 1, id_size_glb);
+            ids.push_back(targetId);
+        } else {
+            ids = initializeRecipientId(party_size_glb, id_size_glb);
+        }
+
+        // if i is pertinent for recipient r, then its clue is already generated via given sk, and will be in the same equation
+        // i.e., when multiplied the polynomial matrix with the recipient r's ID, detector will get clue i.
+        vector<vector<long>> cluePolynomial(clueLength, vector<long>(id_size_glb));
+        for (int a = 0; a < clueLength; a++) {
+            vector<vector<long>> temp = solveCluePolynomial(params, i, ids, a, prepare);
+            for(int j = 0; j < id_size_glb; j++){
+                cluePolynomial[a][j] = temp[j][0];
+            }
+        }
+        saveGroupClues(cluePolynomial, i);
+
+        if (check) {
+            verify(targetId, i);
+            check = false;
+        }
     }
 }

@@ -24,7 +24,8 @@ void OMD1p(){
     cout << "Finishing generating sk for PVW cts\n";
 
     // step 2. prepare transactions
-    auto expected = preparingTransactionsFormal(pk, numOfTransactions, num_of_pertinent_msgs_glb,  params);
+    vector<int> pertinentMsgIndices(num_of_pertinent_msgs_glb);
+    auto expected = preparingTransactionsFormal(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb,  params);
     cout << expected.size() << " pertinent msg: Finishing preparing messages\n";
 
     // step 3. generate detection key
@@ -175,7 +176,8 @@ void OMR2(){
     cout << "Finishing generating sk for PVW cts\n";
 
     // step 2. prepare transactions
-    auto expected = preparingTransactionsFormal(pk, numOfTransactions, num_of_pertinent_msgs_glb,  params);
+    vector<int> pertinentMsgIndices(num_of_pertinent_msgs_glb);
+    auto expected = preparingTransactionsFormal(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb,  params);
     cout << expected.size() << " pertinent msg: Finishing preparing messages\n";
 
     // step 3. generate detection key
@@ -390,7 +392,8 @@ void OMR3(){
     cout << "Finishing generating sk for PVW cts\n";
 
     // step 2. prepare transactions
-    auto expected = preparingTransactionsFormal(pk, numOfTransactions, num_of_pertinent_msgs_glb,  params);
+    vector<int> pertinentMsgIndices(num_of_pertinent_msgs_glb);
+    auto expected = preparingTransactionsFormal(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb,  params);
     cout << expected.size() << " pertinent msg: Finishing preparing messages\n";
 
     // step 3. generate detection key

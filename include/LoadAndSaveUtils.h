@@ -17,12 +17,12 @@ void createDatabase(int num_of_transactions = 524288, int payloadSize = 306){
     }
 }
 
-vector<uint64_t> loadDataSingle(int i, int payloadSize = 306){
+vector<uint64_t> loadDataSingle(int i, const string folder = "payloads", int payloadSize = 306){
     vector<uint64_t> ret;
 
     ret.resize(payloadSize);
     ifstream datafile;
-    datafile.open ("../data/payloads/"+to_string(i)+".txt");
+    datafile.open ("../data/"+folder+"/"+to_string(i)+".txt");
     for(int j = 0; j < payloadSize; j++){
         datafile >> ret[j];
     }
@@ -45,7 +45,20 @@ void saveClues(const PVWCiphertext& clue, int transaction_num){
     datafile.close();
 }
 
-void loadData(vector<vector<uint64_t>>& msgs, const int& start, const int& end, int payloadSize = 306, int partySize = 1){
+void saveGroupClues(const vector<vector<long>>& cluePolynomial, int transaction_num){
+    ofstream datafile;
+    datafile.open ("../data/cluePoly/"+to_string(transaction_num)+".txt");
+
+    for(size_t i = 0; i < cluePolynomial.size(); i++){
+        for (size_t j = 0; j < cluePolynomial[0].size(); j++) {
+            datafile << cluePolynomial[i][j] << "\n";
+        }
+    }
+
+    datafile.close();
+}
+
+void loadData(vector<vector<uint64_t>>& msgs, const int& start, const int& end, string folder = "payloads", int payloadSize = 306, int partySize = 1){
     msgs.resize((end-start) * partySize);
     for(int i = start; i < end; i++){
         msgs[i-start].resize(payloadSize);
@@ -53,7 +66,7 @@ void loadData(vector<vector<uint64_t>>& msgs, const int& start, const int& end, 
 
         // duplicate each unique message |partySize| times
         for (int p = 0; p < partySize; p++) {
-            datafile.open("../data/payloads/"+to_string(i)+".txt");
+            datafile.open("../data/"+folder+"/"+to_string(i)+".txt");
             datafile.seekg(0, ios::beg);
             for(int j = 0; j < payloadSize; j++){
                 datafile >> msgs[(i-start) * partySize + p][j];
@@ -82,6 +95,36 @@ void loadClues(vector<PVWCiphertext>& clues, const int& start, const int& end, c
             uint64_t temp;
             datafile >> temp;
             clues[i-start].b[j] = temp;
+        }
+    }
+}
+
+// similar to loadClues but under Oblivious Multiplexer, load the clue polynomial coefficient matrix, and compute the clues based on target ID
+void loadObliviousMultiplexerClues(vector<PVWCiphertext>& clues, const vector<int>& targetId, const int& start,
+                                   const int& end, const PVWParam& param, int clueLength = 454) {
+    clues.resize(end-start);
+
+    for (int i = start; i < end; i++) {
+        vector<uint64_t> polyFlat = loadDataSingle(i, "cluePoly", clueLength * id_size_glb);
+        vector<vector<long>> cluePolynomial(clueLength, vector<long>(id_size_glb));
+        vector<long> res(clueLength, 0);
+        int res_ind = 0;
+
+        clues[i-start].a = NativeVector(param.n);
+        clues[i-start].b = NativeVector(param.ell);
+
+        for (int c = 0; c < clueLength; c++) {
+            for(int j = 0; j < id_size_glb; j++) {
+                res[c] = (res[c] + polyFlat[c * id_size_glb + j] * targetId[j]) % 65537;
+            }
+        }
+
+        for(int j = 0; j < param.n; j++, res_ind++){
+            clues[i-start].a[j] = res[res_ind];
+        }
+
+        for(int j = 0; j < param.ell; j++, res_ind++){
+            clues[i-start].b[j] = res[res_ind];
         }
     }
 }
