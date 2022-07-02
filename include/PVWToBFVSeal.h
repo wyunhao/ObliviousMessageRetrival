@@ -179,27 +179,37 @@ void genSwitchingKeyPVWPackedWithId(vector<Ciphertext>& switchingKey, const vect
     encryptor.set_secret_key(BFVsk);
 
     int tempn = 1;
-    for(; tempn < (params.n + params.ell) * targetId.size(); tempn *= 2){}
-    for(int j = 0; j < params.ell; j++) {
+    for (; tempn < params.n; tempn *= 2) {}
+    for (int j = 0; j < params.ell; j++) {
         // encrypt into ell BFV ciphertexts
         vector<uint64_t> skInt(degree);
-        for(size_t i = 0; i < degree; i++) {
+        for (size_t i = 0; i < degree; i++){
             auto tempindex = i%uint64_t(tempn);
-            if(int(tempindex) >= (params.n + params.ell) * targetId.size()) {
+            if(int(tempindex) >= params.n) {
                 skInt[i] = 0;
             } else {
-                int sk_ind = tempindex / targetId.size();
-                int id_ind = tempindex % targetId.size();
-                if (sk_ind >= params.n) {
-                    skInt[i] = uint64_t(65537 - targetId[id_ind]); // for b part
-                } else {
-                    skInt[i] = uint64_t((regSk[j][sk_ind].ConvertToInt() * targetId[id_ind]) % 65537);
-                }
+                skInt[i] = uint64_t(regSk[j][tempindex].ConvertToInt() % 65537);
             }
         }
         Plaintext plaintext;
         batch_encoder.encode(skInt, plaintext);
         encryptor.encrypt_symmetric(plaintext, switchingKey[j]);
+    }
+
+    if (switchingKey.size() > params.ell) {
+        for (; tempn < targetId.size(); tempn *= 2) {} // encrypted the targetId for 1 * id_size
+        vector<uint64_t> skInt(degree);
+        for (size_t i = 0; i < degree; i++) {
+            auto tempindex = i % uint64_t(tempn);
+            if(int(tempindex) >= targetId.size()) {
+                skInt[i] = 0;
+            } else {
+                skInt[i] = uint64_t((targetId[tempindex]) % 65537);
+            }
+        }
+        Plaintext plaintext;
+        batch_encoder.encode(skInt, plaintext);
+        encryptor.encrypt_symmetric(plaintext, switchingKey[switchingKey.size() - 1]);
     }
 }
 
@@ -273,7 +283,6 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
     auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
 
     int tempn;
-    for (tempn = 1; tempn < (param.n + param.ell) * id_size_glb; tempn*=2) {}
 
     Evaluator evaluator(context);
     BatchEncoder batch_encoder(context);
@@ -283,33 +292,88 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
         return;
     }
 
-
-    for (int i = 0; i < tempn; i++) { // 8192 number to multiply
-        vector<uint64_t> vectorOfInts(cluePoly.size()); // 8192 msgs each time
-        for (size_t j = 0; j < cluePoly.size(); j++){
-            int the_index = (i+int(j))%tempn;
-            if (the_index >= (param.n + param.ell) * id_size_glb) {
-                vectorOfInts[j] = 0;
-            } else {
-                vectorOfInts[j] = cluePoly[j][the_index];
+    for (tempn = 1; tempn < param.n; tempn *= 2) {}
+    for (int i = 0; i < tempn; i++) {
+        // when i = 0; partial_a encrypted (a_00, a_11, a_22, ...)
+        // when i = 1; partial_a encrypted (a_01, a_12, a_23, ...)
+        Ciphertext partial_a;
+        for (int id_index = 0; id_index < id_size_glb; id_index++) {
+            vector<uint64_t> vectorOfA(cluePoly.size());
+            // cluePoly[i][j] = cluePoly.size() x id_size_glb
+            // where, the row: newCluePoly[i] = i-th msg, (i + j) % tempn row of the original matrix
+            for (int j = 0; j < cluePoly.size(); j++) {
+                int row_index = (j + i) % tempn;
+                int col_index = (j + id_index) % id_size_glb;
+                if (row_index >= param.n) {
+                    vectorOfA[j] = 0;
+                } else {
+                    vectorOfA[j] = cluePoly[j][row_index * id_size_glb + col_index];
+                }
             }
-        }
 
-        Plaintext plaintext;
-        batch_encoder.encode(vectorOfInts, plaintext);
-        
-        // times (sk, -1) together with targetId to (a, b)
-        for (int j = 0; j < param.ell; j++) {
-            if (i == 0) {
-                evaluator.multiply_plain(switchingKey[j], plaintext, output[j]);
+            // use the last switchingKey encrypting targetId with id-size as one unit, and rotate
+            Plaintext plaintext;
+            batch_encoder.encode(vectorOfA, plaintext);
+
+            if (id_index == 0) {
+                evaluator.multiply_plain(switchingKey[switchingKey.size() - 1], plaintext, partial_a);
             } else {
                 Ciphertext temp;
-                evaluator.multiply_plain(switchingKey[j], plaintext, temp);
+                evaluator.multiply_plain(switchingKey[switchingKey.size() - 1], plaintext, temp);
+                evaluator.add_inplace(partial_a, temp);
+            }
+            evaluator.rotate_rows_inplace(switchingKey[switchingKey.size() - 1], 1, gal_keys);
+        }
+
+        // perform ciphertext multi with switchingKey encrypted SK with [450] as one unit, and rotate
+        for(int j = 0; j < param.ell; j++){
+            if(i == 0){
+                evaluator.multiply(switchingKey[j], partial_a, output[j]);
+            }
+            else{
+                Ciphertext temp;
+                evaluator.multiply(switchingKey[j], partial_a, temp);
                 evaluator.add_inplace(output[j], temp);
             }
             // rotate one slot at a time
             evaluator.rotate_rows_inplace(switchingKey[j], 1, gal_keys);
         }
+    }
+
+    // multiply (encrypted Id) with ell different (clue poly for b)
+    vector<Ciphertext> b_parts(param.ell);
+    for (tempn = 1; tempn < id_size_glb; tempn *= 2) {}
+    for (int i = 0; i < tempn; i++) {
+        for (int e = 0; e < param.ell; e++) {
+            vector<uint64_t> vectorOfB(cluePoly.size());
+            for (size_t j = 0; j < cluePoly.size(); j++) {
+                int the_index = (i+int(j))%tempn;
+                if (the_index >= id_size_glb) {
+                    vectorOfB[j] = 0;
+                } else {
+                    vectorOfB[j] = cluePoly[j][(450 + e) * id_size_glb + the_index];
+                }
+            }
+
+            Plaintext plaintext;
+            batch_encoder.encode(vectorOfB, plaintext);
+
+            if (i == 0) {
+                evaluator.multiply_plain(switchingKey[switchingKey.size() - 1], plaintext, b_parts[e]);
+            } else {
+                Ciphertext temp;
+                evaluator.multiply_plain(switchingKey[switchingKey.size() - 1], plaintext, temp);
+                evaluator.add_inplace(b_parts[e], temp);
+            }
+        }
+        evaluator.rotate_rows_inplace(switchingKey[switchingKey.size() - 1], 1, gal_keys);
+    }
+
+    // compute a*SK - b with ciphertexts
+    for(int i = 0; i < param.ell; i++){
+        evaluator.negate_inplace(b_parts[i]);
+        evaluator.add_inplace(output[i], b_parts[i]);
+        evaluator.mod_switch_to_next_inplace(output[i]);
     }
     MemoryManager::SwitchProfile(std::move(old_prof));
 }

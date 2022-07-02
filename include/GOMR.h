@@ -715,17 +715,17 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     auto pk = PVWGeneratePublicKey(params, sk);
     cout << "Finishing generating sk for PVW cts\n";
 
-    // const vector<int> targetId = initializeRecipientId(1, id_size_glb)[0];
-    const vector<int> targetId = {16807, 10779, 19490, 53622, 29521, 48834, 35027, 45850, 55377, 36010, 26498, 63962, 43056, 55158, 52700, 62331};
+    const vector<int> targetId = initializeRecipientId(1, id_size_glb)[0];
+    // const vector<int> targetId = {16807, 10779, 19490, 53622, 29521, 48834, 35027, 45850, 55377, 36010, 26498, 63962, 43056, 55158, 52700, 62331};
     cout << "Recipient Target ID: " << targetId << endl;
 
     // step 2. prepare transactions
-    vector<int> pertinentMsgIndices = {2096, 2494, 2580, 4006, 4208, 5379};
-    // vector<int> pertinentMsgIndices;
-    // auto expected = preparingTransactionsFormal(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb, params, party_size_glb);
-    // preparingGroupCluePolynomial(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb, params, targetId, true);
+    // vector<int> pertinentMsgIndices = {2096, 2494, 2580, 4006, 4208, 5379};
+    vector<int> pertinentMsgIndices;
+    auto expected = preparingTransactionsFormal(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb, params, party_size_glb);
+    preparingGroupCluePolynomial(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb, params, targetId, true);
 
-    // cout << expected.size() << " pertinent msg: Finishing preparing messages\n";
+    cout << expected.size() << " pertinent msg: Finishing preparing messages\n";
 
     // step 3. generate detection key
     // recipient side
@@ -735,7 +735,7 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28,
                                                                             60, 60, 60, 60, 60,
                                                                             60, 60, 60, 60, 60, 60,
-                                                                            60, 30, 60 });
+                                                                            60, 60, 60 });
     parms.set_coeff_modulus(coeff_modulus);
     parms.set_plain_modulus(65537);
 
@@ -761,7 +761,7 @@ void GOMR1_ObliviousMultiplexer_BFV() {
 
     vector<Ciphertext> switchingKey;
     Ciphertext packedSIC;
-    switchingKey.resize(params.ell);
+    switchingKey.resize(params.ell + 2); // encrypt the id (one repeated 450 times, one single time) as the last two ciphertexts
     genSwitchingKeyPVWPackedWithId(switchingKey, targetId, context, poly_modulus_degree, public_key, secret_key, sk, params);
 
     // // Try to decode the packedSICfromPhase1
@@ -857,7 +857,6 @@ void GOMR1_ObliviousMultiplexer_BFV() {
             // sum up all ciphertexts into one, s.t. each slot in the final ciphertext encrypts a single group
             Ciphertext packedSIC_temp;
             loadData(cluePolyMatrics[i], counter[i], counter[i]+poly_modulus_degree, "cluePoly", 454 * id_size_glb);
-            cout << "cluePolyMatrics   " << cluePolyMatrics << endl;
             packedSICfromPhase1[i][j] = serverOperations1obtainPackedSICWithCluePoly(cluePolyMatrics[i], switchingKey, relin_keys, gal_keys,
                                                                 poly_modulus_degree, context, params, poly_modulus_degree);
             j++;
@@ -871,7 +870,7 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     vector<uint64_t> pod_result_test(poly_modulus_degree);
     decryptor.decrypt(packedSICfromPhase1[0][0], plain_result_test);
     batch_encoder.decode(plain_result_test, pod_result_test);
-    cout << "---------------------------------------------------> CHECK CHECK PV vector, 8192 size: " << endl;
+    cout << "---------------------------------------------------> CHECK CHECK PV vector, 2048 size: " << endl;
     for (auto i: pod_result_test)
         cout << i << ' ';
 
@@ -950,3 +949,93 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     // else
     //     cout << "Overflow" << endl;
 }
+
+vector<uint64_t> generateTargetId(int index, int size) {
+    const vector<int> targetId = {16807, 10779, 19490, 53622, 29521, 48834, 35027, 45850, 55377, 36010, 26498, 63962, 43056, 55158, 52700, 62331};
+    vector<uint64_t> id(size);
+    for (int i = 0; i < size; i++) { 
+        id[i] = targetId[(i + index) % targetId.size()];
+    }
+
+    return id;
+}
+
+vector<uint64_t> multi(vector<uint64_t>& a, vector<uint64_t>& b) {
+    vector<uint64_t> res(a.size());
+
+    for (int i=0; i < a.size(); i++) {
+        res[i] = (a[i] * b[i] ) % 65537;
+    }
+
+    return res;
+}
+
+void add(vector<uint64_t>& res, vector<uint64_t>& a) {
+
+    for (int i=0; i < res.size(); i++) {
+        res[i] = (res[i] + a[i] ) % 65537;
+    }
+}
+
+void test() {
+
+    const vector<int> targetId = {16807, 10779, 19490, 53622, 29521, 48834, 35027, 45850, 55377, 36010, 26498, 63962, 43056, 55158, 52700, 62331};
+    int tempn;
+    vector<vector<uint64_t>> cluePoly(poly_modulus_degree_glb);
+    for (tempn = 1; tempn < 450; tempn *= 2) {}
+
+    // vector<vector<uint64_t>> as(tempn);
+
+    loadData(cluePoly, 0, poly_modulus_degree_glb, "cluePoly", 454 * id_size_glb);
+    // for (int i = 0; i < tempn; i++) {
+    //     as[i].resize(cluePoly.size());
+    //     for (int id_index = 0; id_index < id_size_glb; id_index++) {
+    //         vector<uint64_t> vectorOfA(cluePoly.size());
+    //         // cluePoly[i][j] = cluePoly.size() x id_size_glb
+    //         // where, the row: newCluePoly[i] = i-th msg, (i + j) % tempn row of the original matrix 
+    //         for (int j = 0; j < cluePoly.size(); j++) {
+    //             int row_index = (j + i) % tempn;
+    //             int col_index = (j + id_index) % id_size_glb;
+    //             if (row_index >= 450) {
+    //                 vectorOfA[j] = 0;
+    //             } else {
+    //                 vectorOfA[j] = cluePoly[j][row_index * id_size_glb + col_index];
+    //             }
+    //         }
+
+    //         vector<uint64_t> tempid = generateTargetId(id_index, cluePoly.size());
+    //         vector<uint64_t> t = multi(vectorOfA, tempid);
+    //         add(as[i], t);
+    //     }
+    // }
+    vector<vector<uint64_t>> b_parts(4);
+    for (tempn = 1; tempn < id_size_glb; tempn *= 2) {}
+    for (int i = 0; i < tempn; i++) {
+        for (int e = 0; e < 4; e++) {
+            b_parts[e].resize(cluePoly.size());
+            vector<uint64_t> vectorOfB(cluePoly.size());
+            for (size_t j = 0; j < cluePoly.size(); j++) {
+                int the_index = (i+int(j))%tempn;
+                if (the_index >= id_size_glb) {
+                    vectorOfB[j] = 0;
+                } else {
+                    vectorOfB[j] = cluePoly[j][(450 + e) * id_size_glb + the_index];
+                }
+            }
+
+            vector<uint64_t> tempid = generateTargetId(i, cluePoly.size());
+            vector<uint64_t> t = multi(vectorOfB, tempid);
+            add(b_parts[e], t);
+        }
+    }
+
+    for (int i=0; i<b_parts[0].size(); i++) {
+        for (int j=0; j<b_parts.size(); j++) {
+            cout << b_parts[j][i] << " ";
+        }
+        cout << endl;
+        verify(targetId, i);
+        cout << "--------------------------------------------------------------------------" << endl;
+    }    
+}
+
