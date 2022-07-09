@@ -163,14 +163,11 @@ void expandSIC_Alt(vector<Ciphertext>& expanded, Ciphertext& toExpand, const Gal
                 evaluator2.rotate_rows(expanded[k*4 + j], i, gal_keys_lower, temp);
                 evaluator2.add_inplace(expanded[k*4 + j], temp);
             }
-        }
-
-        
+        }        
     }
 }
 
-// encrypt the SK times the targetID, for example, if SK={1,2,3} and targetId={7,5}
-// then the result will be a 6x1 vector: {7,5,14,10,21,15,0,0}, padded with zero's
+// add encrypted targetID as the last switching key based on the original logic
 void genSwitchingKeyPVWPackedWithId(vector<Ciphertext>& switchingKey, const vector<int>& targetId, const SEALContext& context, const size_t& degree, 
                          const PublicKey& BFVpk, const SecretKey& BFVsk, const PVWsk& regSk, const PVWParam& params){ // TODOmulti: can be multithreaded easily
     
@@ -197,7 +194,7 @@ void genSwitchingKeyPVWPackedWithId(vector<Ciphertext>& switchingKey, const vect
     }
 
     if (switchingKey.size() > params.ell) {
-        for (; tempn < targetId.size(); tempn *= 2) {} // encrypted the targetId for 1 * id_size
+        for (tempn = 1; tempn < targetId.size(); tempn *= 2) {} // encrypted the targetId for 1 * id_size
         vector<uint64_t> skInt(degree);
         for (size_t i = 0; i < degree; i++) {
             auto tempindex = i % uint64_t(tempn);
@@ -276,7 +273,7 @@ vector<seal::Serializable<Ciphertext>> genSwitchingKeyPVWPacked(const SEALContex
 // compute b - as with packed swk but also only requires one rot key
 // const vector<PVWCiphertext>& toPack,
 void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const vector<vector<uint64_t>>& cluePoly,
-                                            vector<Ciphertext>& switchingKey, const GaloisKeys& gal_keys,
+                                            vector<Ciphertext>& switchingKey, const RelinKeys& relin_keys, const GaloisKeys& gal_keys,
                                             const SEALContext& context, const PVWParam& param) { 
 
     MemoryPoolHandle my_pool = MemoryPoolHandle::New(true);
@@ -335,6 +332,7 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
                 evaluator.multiply(switchingKey[j], partial_a, temp);
                 evaluator.add_inplace(output[j], temp);
             }
+            evaluator.relinearize_inplace(output[j], relin_keys);
             // rotate one slot at a time
             evaluator.rotate_rows_inplace(switchingKey[j], 1, gal_keys);
         }

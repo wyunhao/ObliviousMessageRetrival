@@ -51,6 +51,9 @@ inline void print_parameters(const seal::SEALContext &context)
     case seal::scheme_type::bfv:
         scheme_name = "BFV";
         break;
+    case seal::scheme_type::bgv:
+        scheme_name = "BGV";
+        break;
     case seal::scheme_type::ckks:
         scheme_name = "CKKS";
         break;

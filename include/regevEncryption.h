@@ -132,7 +132,7 @@ struct PVWCiphertext{
 
 typedef vector<PVWCiphertext> PVWpk;
 
-PVWsk PVWGenerateSecretKey(const PVWParam& param);
+PVWsk PVWGenerateSecretKey(const PVWParam& param, const bool print);
 PVWpk PVWGeneratePublicKey(const PVWParam& param, const PVWsk& sk);
 void PVWEncSK(PVWCiphertext& ct, const vector<int>& msg, const PVWsk& sk, const PVWParam& param, const bool& pk_gen = false);
 void PVWEncPK(PVWCiphertext& ct, const vector<int>& msg, const PVWpk& pk, const PVWParam& param);
@@ -140,7 +140,7 @@ void PVWDec(vector<int>& msg, const PVWCiphertext& ct, const PVWsk& sk, const PV
 
 /////////////////////////////////////////////////////////////////// Below are implementation
 
-PVWsk PVWGenerateSecretKey(const PVWParam& param){
+PVWsk PVWGenerateSecretKey(const PVWParam& param, const bool print = false){
     int n = param.n;
     int q = param.q;
     lbcrypto::DiscreteUniformGeneratorImpl<regevSK> dug;
@@ -148,6 +148,13 @@ PVWsk PVWGenerateSecretKey(const PVWParam& param){
     PVWsk ret(param.ell);
     for(int i = 0; i < param.ell; i++){
         ret[i] = dug.GenerateVector(n);
+        if (print) {
+            cout << i << ": " << endl;
+            for (int c = 0; c < param.n; c++) {
+                cout << ret[i][c].ConvertToInt() << " " ;
+            }
+            cout << endl;
+        }
     }
     return ret;
 }
@@ -184,7 +191,7 @@ PVWpk PVWGeneratePublicKey(const PVWParam& param, const PVWsk& sk){
     return pk;
 }
 
-void PVWEncPK(PVWCiphertext& ct, const vector<int>& msg, const PVWpk& pk, const PVWParam& param){
+void PVWEncPK(PVWCiphertext& ct, const vector<int>& msg, const PVWpk& pk, const PVWParam& param) {
     NativeInteger q = param.q;
     ct.a = NativeVector(param.n);
     ct.b = NativeVector(param.ell);

@@ -133,7 +133,7 @@ int main() {
             break;
 
         case 17:
-            numcores = 1;
+            numcores = 4;
             GOMR1_ObliviousMultiplexer_BFV();
             break;
 

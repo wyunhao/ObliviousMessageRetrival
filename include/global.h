@@ -3,22 +3,22 @@
 using namespace seal;
 
 int numcores = 4;
-int OMRtwoM = 4;
-int OMRthreeM = 4;
+int OMRtwoM = 50;
+int OMRthreeM = 50;
 int mod_switch_counter = 0; 
 GaloisKeys gal_keys_next; 
 GaloisKeys gal_keys_last;
 vector<vector<int>> bipartite_map_glb;
 vector<vector<int>> weights_glb;
-int repeatition_glb = 4;
+int repeatition_glb = 5;
 int seed_glb = 3;
 size_t C_glb = 5;
-int numOfTransactions_glb = 2048;
-size_t poly_modulus_degree_glb = 2048;
-size_t num_of_pertinent_msgs_glb = 2;
+int numOfTransactions_glb = 16384;
+size_t poly_modulus_degree_glb = 16384;
+size_t num_of_pertinent_msgs_glb = 10;
 int party_size_glb = 12;
 int id_size_glb = 16;
-int repetition_glb = 5;
+int repetition_glb = 16;
 
 vector<uint64_t> expectedIndices;
 

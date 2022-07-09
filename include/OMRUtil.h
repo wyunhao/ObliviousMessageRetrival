@@ -79,18 +79,17 @@ Ciphertext serverOperations1obtainPackedSIC(vector<PVWCiphertext>& SICPVW, vecto
     return packedSIC[0];
 }
 
+
 // Phase 1, obtaining PV's based on encrypted targetId
 Ciphertext serverOperations1obtainPackedSICWithCluePoly(vector<vector<uint64_t>>& cluePoly, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
                             const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params, const int numOfTransactions){
     Evaluator evaluator(context);
     
     vector<Ciphertext> packedSIC(params.ell);
-    computeBplusASPVWOptimizedWithCluePoly(packedSIC, cluePoly, switchingKey, gal_keys, context, params);
-    cout << "after computeBplusASPVWOptimized" << endl;
+    computeBplusASPVWOptimizedWithCluePoly(packedSIC, cluePoly, switchingKey, relin_keys, gal_keys, context, params);
 
     int rangeToCheck = 850; // range check is from [-rangeToCheck, rangeToCheck-1]
     newRangeCheckPVW(packedSIC, rangeToCheck, relin_keys, degree, context, params);
-    cout << "after newRangeCheckPVW" << endl;
 
     return packedSIC[0];
 }

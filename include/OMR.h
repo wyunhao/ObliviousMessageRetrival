@@ -182,7 +182,7 @@ void OMR2(){
 
     // step 3. generate detection key
     // recipient side
-    EncryptionParameters parms(scheme_type::bfv);
+    EncryptionParameters parms(scheme_type::bgv);
     auto degree = poly_modulus_degree;
     parms.set_poly_modulus_degree(poly_modulus_degree);
     auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28, 
@@ -252,7 +252,7 @@ void OMR2(){
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next); 
-    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
+    vector<int> steps_next = {0,32,64,128,256,512};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;

@@ -490,11 +490,14 @@ void GOMR1_ObliviousMultiplexer() {
     // step 1. generate PVW sk
     // recipient side
     auto params = PVWParam(450, 65537, 1.3, 16000, 4);
-    auto sk = PVWGenerateSecretKey(params);
+    auto sk = PVWGenerateSecretKey(params, true);
+
     auto pk = PVWGeneratePublicKey(params, sk);
     cout << "Finishing generating sk for PVW cts\n";
 
-    const vector<int> targetId = initializeRecipientId(1, id_size_glb)[0];
+    // const vector<int> targetId = initializeRecipientId(1, id_size_glb)[0];
+    const vector<int> targetId = {16807, 10779, 19490, 53622, 29521, 48834, 35027, 45850, 55377, 36010, 26498, 63962, 43056, 55158, 52700, 62331};
+
     cout << "Recipient Target ID: " << targetId << endl;
 
     // step 2. prepare transactions
@@ -574,7 +577,7 @@ void GOMR1_ObliviousMultiplexer() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512};
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;
@@ -619,7 +622,7 @@ void GOMR1_ObliviousMultiplexer() {
             // divide messages into parties, for partySize ciphertexts, each ciphertext p encrypt the PVs of the p-th messages in all groups
             // sum up all ciphertexts into one, s.t. each slot in the final ciphertext encrypts a single group
             Ciphertext packedSIC_temp;
-            loadObliviousMultiplexerClues(SICPVW_multicore[i], targetId, counter[i], counter[i]+poly_modulus_degree, params);
+            loadObliviousMultiplexerClues(pertinentMsgIndices, SICPVW_multicore[i], targetId, counter[i], counter[i]+poly_modulus_degree, params);
             packedSICfromPhase1[i][j] = serverOperations1obtainPackedSIC(SICPVW_multicore[i], switchingKey, relin_keys, gal_keys,
                                                                 poly_modulus_degree, context, params, poly_modulus_degree);
             j++;
@@ -705,7 +708,7 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     size_t poly_modulus_degree = poly_modulus_degree_glb;
 
     int numOfTransactions = numOfTransactions_glb;
-    // createDatabase(numOfTransactions, 306);
+    createDatabase(numOfTransactions, 306);
     cout << "Finishing createDatabase\n";
 
     // step 1. generate PVW sk
@@ -716,11 +719,9 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     cout << "Finishing generating sk for PVW cts\n";
 
     const vector<int> targetId = initializeRecipientId(1, id_size_glb)[0];
-    // const vector<int> targetId = {16807, 10779, 19490, 53622, 29521, 48834, 35027, 45850, 55377, 36010, 26498, 63962, 43056, 55158, 52700, 62331};
     cout << "Recipient Target ID: " << targetId << endl;
 
     // step 2. prepare transactions
-    // vector<int> pertinentMsgIndices = {2096, 2494, 2580, 4006, 4208, 5379};
     vector<int> pertinentMsgIndices;
     auto expected = preparingTransactionsFormal(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb, params, party_size_glb);
     preparingGroupCluePolynomial(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb, params, targetId, true);
@@ -764,16 +765,24 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     switchingKey.resize(params.ell + 2); // encrypt the id (one repeated 450 times, one single time) as the last two ciphertexts
     genSwitchingKeyPVWPackedWithId(switchingKey, targetId, context, poly_modulus_degree, public_key, secret_key, sk, params);
 
+    // Try to decode the packedSICfromPhase1
+    for (int i=0; i<switchingKey.size(); i++) {
+        Plaintext plain_result_test;
+        vector<uint64_t> pod_result_test(poly_modulus_degree);
+        decryptor.decrypt(switchingKey[0], plain_result_test);
+        batch_encoder.decode(plain_result_test, pod_result_test);
+        cout << "---------------------------------------------------> CHECK CHECK switchingKey: " << endl;
+        for (auto i: pod_result_test)
+            cout << i << ' ';
+
+        cout << endl;
+    }
+
     // // Try to decode the packedSICfromPhase1
     Plaintext plain_result_test;
     vector<uint64_t> pod_result_test(poly_modulus_degree);
     decryptor.decrypt(switchingKey[0], plain_result_test);
     batch_encoder.decode(plain_result_test, pod_result_test);
-    cout << "---------------------------------------------------> CHECK CHECK switchingKey: " << endl;
-    for (auto i: pod_result_test)
-        cout << i << ' ';
-
-    cout << endl;
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
@@ -807,7 +816,7 @@ void GOMR1_ObliviousMultiplexer_BFV() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512};
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;
@@ -837,9 +846,8 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     NTL::SetNumThreads(numcores);
     SecretKey secret_key_blank;
 
-    // chrono::high_resolution_clock::time_point time_start, time_end;
-    chrono::high_resolution_clock::time_point time_start;
-    // chrono::microseconds time_diff;
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    chrono::microseconds time_diff;
     time_start = chrono::high_resolution_clock::now();
 
     MemoryPoolHandle my_pool = MemoryPoolHandle::New();
@@ -865,177 +873,74 @@ void GOMR1_ObliviousMultiplexer_BFV() {
         }
     }
 
-    // Try to decode the packedSICfromPhase1
-    Plaintext plain_result_test;
-    vector<uint64_t> pod_result_test(poly_modulus_degree);
-    decryptor.decrypt(packedSICfromPhase1[0][0], plain_result_test);
-    batch_encoder.decode(plain_result_test, pod_result_test);
-    cout << "---------------------------------------------------> CHECK CHECK PV vector, 2048 size: " << endl;
-    for (auto i: pod_result_test)
-        cout << i << ' ';
-
-    cout << endl;
-
     NTL_EXEC_RANGE_END;
     MemoryManager::SwitchProfile(std::move(old_prof));
 
-    // // step 4. detector operations
-    // vector<Ciphertext> lhs_multi(numcores), rhs_multi(numcores);
-    // vector<vector<vector<int>>> bipartite_map(numcores);
+    // step 4. detector operations
+    vector<Ciphertext> lhs_multi(numcores), rhs_multi(numcores);
+    vector<vector<vector<int>>> bipartite_map(numcores);
 
-    // cout << "before bipartiteGraphWeightsGeneration" << endl;
-    // bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRtwoM, repeatition_glb, seed_glb);
-    // cout << "   after bipartiteGraphWeightsGeneration" << endl;
+    bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRtwoM, repeatition_glb, seed_glb);
 
-    // NTL_EXEC_RANGE(numcores, first, last);
-    // for(int i = first; i < last; i++) {
-    //     MemoryPoolHandle my_pool = MemoryPoolHandle::New();
-    //     auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
-    //     size_t j = 0;
-    //     counter[i] = numOfTransactions/numcores*i;
+    NTL_EXEC_RANGE(numcores, first, last);
+    for(int i = first; i < last; i++) {
+        MemoryPoolHandle my_pool = MemoryPoolHandle::New();
+        auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
+        size_t j = 0;
+        counter[i] = numOfTransactions/numcores*i;
 
-    //     while(j < numOfTransactions/numcores/poly_modulus_degree) {
-    //         if(!i)
-    //             cout << "Phase 2-3, Core " << i << ", Batch " << j << endl;
-    //         loadData(payload_multicore[i], counter[i], counter[i]+poly_modulus_degree);
-    //         Ciphertext templhs, temprhs;
-    //         serverOperations2therest(templhs, bipartite_map[i], temprhs,
-    //                         packedSICfromPhase1[i][j], payload_multicore[i], relin_keys, gal_keys_next,
-    //                         poly_modulus_degree, context_next, context_last, params, poly_modulus_degree, counter[i]);
+        while(j < numOfTransactions/numcores/poly_modulus_degree) {
+            if(!i)
+                cout << "Phase 2-3, Core " << i << ", Batch " << j << endl;
+            loadData(payload_multicore[i], counter[i], counter[i]+poly_modulus_degree);
+            Ciphertext templhs, temprhs;
+            serverOperations2therest(templhs, bipartite_map[i], temprhs,
+                            packedSICfromPhase1[i][j], payload_multicore[i], relin_keys, gal_keys_next,
+                            poly_modulus_degree, context_next, context_last, params, poly_modulus_degree, counter[i]);
 
-    //         if(j == 0){
-    //             lhs_multi[i] = templhs;
-    //             rhs_multi[i] = temprhs;
-    //         } else {
-    //             evaluator.add_inplace(lhs_multi[i], templhs);
-    //             evaluator.add_inplace(rhs_multi[i], temprhs);
-    //         }
-    //         j++;
-    //         payload_multicore[i].clear();
-    //     }
-
-    //     MemoryManager::SwitchProfile(std::move(old_prof));
-    // }
-    // NTL_EXEC_RANGE_END;
-
-    // for(int i = 1; i < numcores; i++) {
-    //     evaluator.add_inplace(lhs_multi[0], lhs_multi[i]);
-    //     evaluator.add_inplace(rhs_multi[0], rhs_multi[i]);
-    // }
-
-    // while(context.last_parms_id() != lhs_multi[0].parms_id()) {
-    //     evaluator.mod_switch_to_next_inplace(rhs_multi[0]);
-    //     evaluator.mod_switch_to_next_inplace(lhs_multi[0]);
-    // }
-
-    // time_end = chrono::high_resolution_clock::now();
-    // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    // cout << "\nDetector runnimg time: " << time_diff.count() << "us." << "\n";
-
-    // stringstream data_streamdg, data_streamdg2;
-    // cout << "Digest size: " << rhs_multi[0].save(data_streamdg) + lhs_multi[0].save(data_streamdg2) << " bytes" << endl;
-
-    // // step 5. receiver decoding
-    // bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions,OMRtwoM,repeatition_glb,seed_glb);
-    // time_start = chrono::high_resolution_clock::now();
-    // auto res = receiverDecoding(lhs_multi[0], bipartite_map[0], rhs_multi[0],
-    //                     poly_modulus_degree, secret_key, context, numOfTransactions);
-    // time_end = chrono::high_resolution_clock::now();
-    // time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    // cout << "\nRecipient runnimg time: " << time_diff.count() << "us." << "\n";
-
-    // if(checkRes(expected, res))
-    //     cout << "Result is correct!" << endl;
-    // else
-    //     cout << "Overflow" << endl;
-}
-
-vector<uint64_t> generateTargetId(int index, int size) {
-    const vector<int> targetId = {16807, 10779, 19490, 53622, 29521, 48834, 35027, 45850, 55377, 36010, 26498, 63962, 43056, 55158, 52700, 62331};
-    vector<uint64_t> id(size);
-    for (int i = 0; i < size; i++) { 
-        id[i] = targetId[(i + index) % targetId.size()];
-    }
-
-    return id;
-}
-
-vector<uint64_t> multi(vector<uint64_t>& a, vector<uint64_t>& b) {
-    vector<uint64_t> res(a.size());
-
-    for (int i=0; i < a.size(); i++) {
-        res[i] = (a[i] * b[i] ) % 65537;
-    }
-
-    return res;
-}
-
-void add(vector<uint64_t>& res, vector<uint64_t>& a) {
-
-    for (int i=0; i < res.size(); i++) {
-        res[i] = (res[i] + a[i] ) % 65537;
-    }
-}
-
-void test() {
-
-    const vector<int> targetId = {16807, 10779, 19490, 53622, 29521, 48834, 35027, 45850, 55377, 36010, 26498, 63962, 43056, 55158, 52700, 62331};
-    int tempn;
-    vector<vector<uint64_t>> cluePoly(poly_modulus_degree_glb);
-    for (tempn = 1; tempn < 450; tempn *= 2) {}
-
-    // vector<vector<uint64_t>> as(tempn);
-
-    loadData(cluePoly, 0, poly_modulus_degree_glb, "cluePoly", 454 * id_size_glb);
-    // for (int i = 0; i < tempn; i++) {
-    //     as[i].resize(cluePoly.size());
-    //     for (int id_index = 0; id_index < id_size_glb; id_index++) {
-    //         vector<uint64_t> vectorOfA(cluePoly.size());
-    //         // cluePoly[i][j] = cluePoly.size() x id_size_glb
-    //         // where, the row: newCluePoly[i] = i-th msg, (i + j) % tempn row of the original matrix 
-    //         for (int j = 0; j < cluePoly.size(); j++) {
-    //             int row_index = (j + i) % tempn;
-    //             int col_index = (j + id_index) % id_size_glb;
-    //             if (row_index >= 450) {
-    //                 vectorOfA[j] = 0;
-    //             } else {
-    //                 vectorOfA[j] = cluePoly[j][row_index * id_size_glb + col_index];
-    //             }
-    //         }
-
-    //         vector<uint64_t> tempid = generateTargetId(id_index, cluePoly.size());
-    //         vector<uint64_t> t = multi(vectorOfA, tempid);
-    //         add(as[i], t);
-    //     }
-    // }
-    vector<vector<uint64_t>> b_parts(4);
-    for (tempn = 1; tempn < id_size_glb; tempn *= 2) {}
-    for (int i = 0; i < tempn; i++) {
-        for (int e = 0; e < 4; e++) {
-            b_parts[e].resize(cluePoly.size());
-            vector<uint64_t> vectorOfB(cluePoly.size());
-            for (size_t j = 0; j < cluePoly.size(); j++) {
-                int the_index = (i+int(j))%tempn;
-                if (the_index >= id_size_glb) {
-                    vectorOfB[j] = 0;
-                } else {
-                    vectorOfB[j] = cluePoly[j][(450 + e) * id_size_glb + the_index];
-                }
+            if(j == 0){
+                lhs_multi[i] = templhs;
+                rhs_multi[i] = temprhs;
+            } else {
+                evaluator.add_inplace(lhs_multi[i], templhs);
+                evaluator.add_inplace(rhs_multi[i], temprhs);
             }
-
-            vector<uint64_t> tempid = generateTargetId(i, cluePoly.size());
-            vector<uint64_t> t = multi(vectorOfB, tempid);
-            add(b_parts[e], t);
+            j++;
+            payload_multicore[i].clear();
         }
+
+        MemoryManager::SwitchProfile(std::move(old_prof));
+    }
+    NTL_EXEC_RANGE_END;
+
+    for(int i = 1; i < numcores; i++) {
+        evaluator.add_inplace(lhs_multi[0], lhs_multi[i]);
+        evaluator.add_inplace(rhs_multi[0], rhs_multi[i]);
     }
 
-    for (int i=0; i<b_parts[0].size(); i++) {
-        for (int j=0; j<b_parts.size(); j++) {
-            cout << b_parts[j][i] << " ";
-        }
-        cout << endl;
-        verify(targetId, i);
-        cout << "--------------------------------------------------------------------------" << endl;
-    }    
-}
+    while(context.last_parms_id() != lhs_multi[0].parms_id()) {
+        evaluator.mod_switch_to_next_inplace(rhs_multi[0]);
+        evaluator.mod_switch_to_next_inplace(lhs_multi[0]);
+    }
 
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << "\nDetector runnimg time: " << time_diff.count() << "us." << "\n";
+
+    stringstream data_streamdg, data_streamdg2;
+    cout << "Digest size: " << rhs_multi[0].save(data_streamdg) + lhs_multi[0].save(data_streamdg2) << " bytes" << endl;
+
+    // step 5. receiver decoding
+    bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions,OMRtwoM,repeatition_glb,seed_glb);
+    time_start = chrono::high_resolution_clock::now();
+    auto res = receiverDecoding(lhs_multi[0], bipartite_map[0], rhs_multi[0],
+                        poly_modulus_degree, secret_key, context, numOfTransactions);
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << "\nRecipient runnimg time: " << time_diff.count() << "us." << "\n";
+
+    if(checkRes(expected, res))
+        cout << "Result is correct!" << endl;
+    else
+        cout << "Overflow" << endl;
+}
