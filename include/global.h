@@ -15,10 +15,11 @@ int seed_glb = 3;
 size_t C_glb = 5;
 int numOfTransactions_glb = 2048;
 size_t poly_modulus_degree_glb = 2048;
-size_t num_of_pertinent_msgs_glb = 2;
+size_t num_of_pertinent_msgs_glb = 1;
 int party_size_glb = 12;
 int id_size_glb = 16;
 int repetition_glb = 5;
+int partial_size_glb = 40;
 
 vector<uint64_t> expectedIndices;
 

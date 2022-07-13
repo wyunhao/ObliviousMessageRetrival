@@ -4,6 +4,7 @@
 #include "seal/seal.h"
 #include <NTL/BasicThreadPool.h>
 #include "global.h"
+#include "MRE.h"
 using namespace seal;
 
 
@@ -242,9 +243,43 @@ void genSwitchingKeyPVWPacked(vector<Ciphertext>& switchingKey, const SEALContex
     }
 }
 
+
+// take MRE sk's and output switching key, which is a ciphertext of size \ell*n, where n is the PVW secret key dimension (enlarged under MRE requirement)
+void genSwitchingKeyMREPacked(vector<Ciphertext>& switchingKey, const SEALContext& context, const size_t& degree, 
+                         const PublicKey& BFVpk, const SecretKey& BFVsk, const MREsk& regSk, const PVWParam& params) {
+    
+    BatchEncoder batch_encoder(context);
+    Encryptor encryptor(context, BFVpk);
+    // Use symmetric encryption to enable seed mode to reduce the detection key size
+    encryptor.set_secret_key(BFVsk);
+
+    int tempn = 1;
+    for (tempn = 1; tempn < params.n; tempn *= 2) {}
+    for (int j = 0; j < params.ell; j++) {
+        // encrypt into ell BFV ciphertexts
+        vector<uint64_t> skInt(degree);
+        for (size_t i = 0; i < degree; i++) {
+            auto tempindex = i % uint64_t(tempn);
+            if (int(tempindex) >= params.n) {
+                skInt[i] = 0;
+            } else {
+                if (tempindex < params.n - partial_size_glb) {
+                    skInt[i] = uint64_t(regSk.secretSK[j][tempindex] % params.q);
+                } else {
+                    skInt[i] = uint64_t(regSk.shareSK[j][tempindex - params.n + partial_size_glb] % params.q);
+                }
+            }
+        }
+        Plaintext plaintext;
+        batch_encoder.encode(skInt, plaintext);
+        encryptor.encrypt_symmetric(plaintext, switchingKey[j]);
+    }
+}
+
 // This is the same as the function above but with a return type, for detection key size calculation
-vector<seal::Serializable<Ciphertext>> genSwitchingKeyPVWPacked(const SEALContext& context, const size_t& degree, 
-                         const PublicKey& BFVpk, const SecretKey& BFVsk, const PVWsk& regSk, const PVWParam& params){ 
+vector<seal::Serializable<Ciphertext>> genSwitchingKeyPVWPacked(const SEALContext& context, const size_t& degree,
+                                                                const PublicKey& BFVpk, const SecretKey& BFVsk,
+                                                                const PVWsk& regSk, const PVWParam& params) { 
     vector<seal::Serializable<Ciphertext>> switchingKey;
 
     BatchEncoder batch_encoder(context);
@@ -257,8 +292,7 @@ vector<seal::Serializable<Ciphertext>> genSwitchingKeyPVWPacked(const SEALContex
         vector<uint64_t> skInt(degree);
         for(size_t i = 0; i < degree; i++){
             auto tempindex = i%uint64_t(tempn);
-            if(int(tempindex) >= params.n)
-            {
+            if(int(tempindex) >= params.n) {
                 skInt[i] = 0;
             } else {
                 skInt[i] = uint64_t(regSk[j][tempindex].ConvertToInt() % 65537);
@@ -382,7 +416,7 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
 // compute b - as with packed swk but also only requires one rot key
 void computeBplusASPVWOptimized(vector<Ciphertext>& output, \
         const vector<PVWCiphertext>& toPack, vector<Ciphertext>& switchingKey, const GaloisKeys& gal_keys,
-        const SEALContext& context, const PVWParam& param){ 
+        const SEALContext& context, const PVWParam& param, bool PVW = true) {
     MemoryPoolHandle my_pool = MemoryPoolHandle::New(true);
     auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
 
@@ -401,8 +435,7 @@ void computeBplusASPVWOptimized(vector<Ciphertext>& output, \
         vector<uint64_t> vectorOfInts(toPack.size());
         for(size_t j = 0; j < toPack.size(); j++){
             int the_index = (i+int(j))%tempn;
-            if(the_index >= param.n)
-            {
+            if(the_index >= param.n) {
                 vectorOfInts[j] = 0;
             } else {
                 vectorOfInts[j] = uint64_t((toPack[j].a[the_index].ConvertToInt()));
@@ -429,7 +462,7 @@ void computeBplusASPVWOptimized(vector<Ciphertext>& output, \
     for(int i = 0; i < param.ell; i++){
         vector<uint64_t> vectorOfInts(toPack.size());
         for(size_t j = 0; j < toPack.size(); j++){
-            vectorOfInts[j] = uint64_t((toPack[j].b[i].ConvertToInt() - 16384) % 65537); 
+            vectorOfInts[j] = PVW ? uint64_t((toPack[j].b[i].ConvertToInt() - 16384) % 65537) : uint64_t(toPack[j].b[i].ConvertToInt());
             // 16384 here is due to the implementation of PVW ciphertext. Needs to shift by ~q/4 so that the decryption is around 0
         }
         Plaintext plaintext;

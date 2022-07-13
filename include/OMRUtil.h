@@ -65,16 +65,15 @@ vector<vector<uint64_t>> preparingTransactionsFormal(vector<int>& pertinentMsgIn
 
 // Phase 1, obtaining PV's
 Ciphertext serverOperations1obtainPackedSIC(vector<PVWCiphertext>& SICPVW, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
-                            const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params, const int numOfTransactions){
+                            const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params,
+                            const int numOfTransactions, bool PVW = true) {
     Evaluator evaluator(context);
     
     vector<Ciphertext> packedSIC(params.ell);
-    computeBplusASPVWOptimized(packedSIC, SICPVW, switchingKey, gal_keys, context, params);
-    cout << "after computeBplusASPVWOptimized" << endl;
+    computeBplusASPVWOptimized(packedSIC, SICPVW, switchingKey, gal_keys, context, params, PVW);
 
     int rangeToCheck = 850; // range check is from [-rangeToCheck, rangeToCheck-1]
     newRangeCheckPVW(packedSIC, rangeToCheck, relin_keys, degree, context, params);
-    cout << "after newRangeCheckPVW" << endl;
 
     return packedSIC[0];
 }
@@ -86,11 +85,9 @@ Ciphertext serverOperations1obtainPackedSICWithCluePoly(vector<vector<uint64_t>>
     
     vector<Ciphertext> packedSIC(params.ell);
     computeBplusASPVWOptimizedWithCluePoly(packedSIC, cluePoly, switchingKey, gal_keys, context, params);
-    cout << "after computeBplusASPVWOptimized" << endl;
 
     int rangeToCheck = 850; // range check is from [-rangeToCheck, rangeToCheck-1]
     newRangeCheckPVW(packedSIC, rangeToCheck, relin_keys, degree, context, params);
-    cout << "after newRangeCheckPVW" << endl;
 
     return packedSIC[0];
 }
@@ -421,47 +418,6 @@ void levelspecificDetectKeySize(){
 
 //////////////////////////////////////////////////// For Oblivious Multiplexer ////////////////////////////////////////////////////
 
-
-// Pick random values to satisfy multi-variable equation.
-// For example, given x + y = 10, we might output {2, 8}.
-void assignVariable(vector<vector<long>>& res, vector<int>& lhs, int rhs) {
-    if (res.size() != lhs.size())
-        cerr << "Coefficient and variable size not match." << endl;
-
-    int lastIndex = lhs.size() - 1;
-
-    for (int i = lhs.size(); i > 0; i--) {
-        if (lhs[i-1] != 0) {
-            lastIndex = i-1;
-            break;
-        }
-    }
-
-    for (int i = 0; i < lhs.size(); i++) {
-        if (lhs[i] != 0 && i != lastIndex) {
-            res[i][0] = rand() % 65537;
-            rhs = (rhs - (lhs[i] * res[i][0])) % 65537;
-        }
-    }
-
-    res[lastIndex][0] = div_mod(rhs % 65537, lhs[lastIndex]);
-    if (res[lastIndex][0] < 0)
-        res[lastIndex][0] += 65537;
-}
-
-// Given solved variables with their values, update the remaining equations.
-// For example, with equation; x + y + 2z = 10, and z = 2, updated equation would be x + y = 6.
-void updateEquation(vector<vector<long>>& res, vector<vector<int>>& lhs, vector<vector<int>>& rhs) {
-    for (int i = 0; i < lhs.size(); i++) {
-        for (int j = 0; j < res.size(); j++) {
-            if (res[j][0] > 0 && lhs[i][j] != 0) {
-                rhs[i][0] = (rhs[i][0] - lhs[i][j] * res[j][0]) % 65537;
-                lhs[i][j] = 0;
-            }
-        }
-    }
-}
-
 // Pick random Zq elements as ID of recipients, in form of a (partySize x idSize) matrix.
 vector<vector<int>> initializeRecipientId(int partySize, int idSize, int mod = 65537) {
     vector<vector<int>> ids(partySize, vector<int> (idSize, -1)); 
@@ -516,6 +472,7 @@ vector<vector<long>> solveCluePolynomial(const PVWParam& params, size_t counter,
     return tryRes;
 }
 
+
 void verify(const vector<int>& targetId, int index) {
     vector<uint64_t> polyFlat = loadDataSingle(index, "cluePoly", 454 * id_size_glb);
     vector<vector<long>> cluePolynomial(454, vector<long>(id_size_glb));
@@ -564,4 +521,42 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
             check = false;
         }
     }
+}
+
+
+// similar to preparingTransactionsFormal but for fixed group GOMR which requires a MREgroupPK for each message.
+vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices, MREpk& pk, int numOfTransactions,
+                           int pertinentMsgNum, const PVWParam& params, const int crs) {
+    srand (time(NULL));
+
+    vector<vector<uint64_t>> ret;
+
+    cout << "Expected Message Indices: ";
+
+    for (int i = 0; i < pertinentMsgNum; i++) {
+        auto temp = rand() % numOfTransactions;
+        while(find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), temp) != pertinentMsgIndices.end()){
+            temp = rand() % numOfTransactions;
+        }
+        cout << temp << " ";
+        pertinentMsgIndices.push_back(temp);
+    }
+
+    cout << endl;
+    for(int i = 0; i < numOfTransactions; i++){
+        MREgroupPK groupPK;
+        if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
+            groupPK = MREgeneratePK(params, pk, crs);
+            ret.push_back(loadDataSingle(i));
+        } else {
+            int temp_crs = rand() % params.q;
+            vector<MREsk> SK = MREgenerateSK(params);
+            MREpk PK = MREgeneratePartialPK(params, SK, temp_crs);
+            groupPK = MREgeneratePK(params, PK, temp_crs);
+        }
+
+        saveMREGroupPK(groupPK, i);
+    }
+
+    return ret;
 }

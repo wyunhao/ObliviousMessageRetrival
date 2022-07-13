@@ -3,6 +3,7 @@
 #include<iostream>
 #include<fstream>
 #include<string>
+#include "MRE.h"
 using namespace std;
 
 void createDatabase(int num_of_transactions = 524288, int payloadSize = 306){
@@ -57,6 +58,21 @@ void saveGroupClues(const vector<vector<long>>& cluePolynomial, int transaction_
 
     datafile.close();
 }
+
+void saveMREGroupPK(const MREgroupPK& groupPK, const int transaction_num) {
+    ofstream datafile;
+    datafile.open ("../data/clues/"+to_string(transaction_num)+".txt");
+
+    for(size_t i = 0; i < groupPK.A.size(); i++) {
+        datafile << groupPK.A[i] << "\n";
+    }
+    for(size_t i = 0; i < groupPK.b.size(); i++) {
+        datafile << groupPK.b[i] << "\n";
+    }
+
+    datafile.close();
+}
+
 
 void loadData(vector<vector<uint64_t>>& msgs, const int& start, const int& end, string folder = "payloads", int payloadSize = 306, int partySize = 1){
     msgs.resize((end-start) * partySize);
@@ -115,7 +131,7 @@ void loadObliviousMultiplexerClues(vector<PVWCiphertext>& clues, const vector<in
 
         for (int c = 0; c < clueLength; c++) {
             for(int j = 0; j < id_size_glb; j++) {
-                res[c] = (res[c] + polyFlat[c * id_size_glb + j] * targetId[j]) % 65537;
+                res[c] = (res[c] + polyFlat[c * id_size_glb + j] * targetId[j]) % param.q;
             }
         }
 

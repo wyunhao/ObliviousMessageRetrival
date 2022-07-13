@@ -4,11 +4,16 @@
 #include "client.h"
 #include "LoadAndSaveUtils.h"
 #include "OMRUtil.h"
+#include "MRE.h"
 #include <NTL/BasicThreadPool.h>
 #include <NTL/ZZ.h>
 #include <thread>
 
 using namespace seal;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////// Ad-hoc Version Group OMR //////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 void GOMR1() {
@@ -950,92 +955,211 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     //     cout << "Overflow" << endl;
 }
 
-vector<uint64_t> generateTargetId(int index, int size) {
-    const vector<int> targetId = {16807, 10779, 19490, 53622, 29521, 48834, 35027, 45850, 55377, 36010, 26498, 63962, 43056, 55158, 52700, 62331};
-    vector<uint64_t> id(size);
-    for (int i = 0; i < size; i++) { 
-        id[i] = targetId[(i + index) % targetId.size()];
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////// Fixed Group Version Group OMR ///////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void GOMR1_FG() {
+size_t poly_modulus_degree = poly_modulus_degree_glb;
+
+    int numOfTransactions = numOfTransactions_glb;
+    createDatabase(numOfTransactions, 306);
+    cout << "Finishing createDatabase\n";
+
+    // step 1. generate MRE sk
+    // recipient side
+    int crs = 21; // TODO: follow the seal convention!!!!!
+    auto params = PVWParam(450 + partial_size_glb, 65537, 1.3, 16000, 4);
+    vector<MREsk> groupSK = MREgenerateSK(params);
+    MREpk groupPK = MREgeneratePartialPK(params, groupSK, crs);
+    cout << "Finishing generating pk for targeted recipient group\n";
+
+    // step 2. prepare transactions
+    vector<int> pertinentMsgIndices;
+    auto expected = preparingMREGroupClue(pertinentMsgIndices, groupPK, numOfTransactions, num_of_pertinent_msgs_glb, params, crs);
+    cout << expected.size() << " pertinent msg: Finishing preparing messages with indices: " << pertinentMsgIndices << endl;
+
+    // step 3. generate detection key
+    // recipient side
+    EncryptionParameters parms(scheme_type::bfv);
+    auto degree = poly_modulus_degree;
+    parms.set_poly_modulus_degree(poly_modulus_degree);
+    auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28,
+                                                                            60, 60, 60, 60, 60,
+                                                                            60, 60, 60, 60, 60, 60,
+                                                                            60, 30, 60 });
+    parms.set_coeff_modulus(coeff_modulus);
+    parms.set_plain_modulus(params.q);
+
+    prng_seed_type seed;
+    for (auto &i : seed) {
+        i = random_uint64();
+    }
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    parms.set_random_generator(rng);
+
+    SEALContext context(parms, true, sec_level_type::none);
+    print_parameters(context);
+    KeyGenerator keygen(context);
+    SecretKey secret_key = keygen.secret_key();
+    PublicKey public_key;
+    keygen.create_public_key(public_key);
+    RelinKeys relin_keys;
+    keygen.create_relin_keys(relin_keys);
+    Encryptor encryptor(context, public_key);
+    Evaluator evaluator(context);
+    Decryptor decryptor(context, secret_key);
+    BatchEncoder batch_encoder(context);
+
+    vector<Ciphertext> switchingKey;
+    Ciphertext packedSIC;
+    switchingKey.resize(params.ell);
+    // w.l.o.g, use the first member in the group to test, ideally, any one should be able to detect same pertinent messages
+    genSwitchingKeyMREPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, groupSK[0], params);
+
+    vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
+    vector<vector<vector<uint64_t>>> payload_multicore(numcores);
+    vector<int> counter(numcores);
+
+    GaloisKeys gal_keys;
+    vector<int> stepsfirst = {1};
+    // only one rot key is needed for full level
+    keygen.create_galois_keys(stepsfirst, gal_keys);
+
+    /////////////////////////////////////////////////////////////// Rot Key gen
+    vector<int> steps = {0};
+    for(int i = 1; i < int(poly_modulus_degree/2); i *= 2) {
+	    steps.push_back(i);
     }
 
-    return id;
-}
+    cout << "Finishing generating detection keys\n";
 
-vector<uint64_t> multi(vector<uint64_t>& a, vector<uint64_t>& b) {
-    vector<uint64_t> res(a.size());
+    /////////////////////////////////////// Level specific keys
+    vector<Modulus> coeff_modulus_next = coeff_modulus;
+    coeff_modulus_next.erase(coeff_modulus_next.begin() + 4, coeff_modulus_next.end()-1);
+    EncryptionParameters parms_next = parms;
+    parms_next.set_coeff_modulus(coeff_modulus_next);
+    SEALContext context_next = SEALContext(parms_next, true, sec_level_type::none);
 
-    for (int i=0; i < a.size(); i++) {
-        res[i] = (a[i] * b[i] ) % 65537;
+    SecretKey sk_next;
+    sk_next.data().resize(coeff_modulus_next.size() * degree);
+    sk_next.parms_id() = context_next.key_parms_id();
+    util::set_poly(secret_key.data().data(), degree, coeff_modulus_next.size() - 1, sk_next.data().data());
+    util::set_poly(
+        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
+        sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
+    KeyGenerator keygen_next(context_next, sk_next);
+    vector<int> steps_next = {0,32,64,128,256,512};
+    keygen_next.create_galois_keys(steps_next, gal_keys_next);
+
+    //////////////////////////////////////
+    vector<Modulus> coeff_modulus_last = coeff_modulus;
+    coeff_modulus_last.erase(coeff_modulus_last.begin() + 3, coeff_modulus_last.end()-1);
+    EncryptionParameters parms_last = parms;
+    parms_last.set_coeff_modulus(coeff_modulus_last);
+    SEALContext context_last = SEALContext(parms_last, true, sec_level_type::none);
+
+    SecretKey sk_last;
+    sk_last.data().resize(coeff_modulus_last.size() * degree);
+    sk_last.parms_id() = context_last.key_parms_id();
+    util::set_poly(secret_key.data().data(), degree, coeff_modulus_last.size() - 1, sk_last.data().data());
+    util::set_poly(
+        secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
+        sk_last.data().data() + degree * (coeff_modulus_last.size() - 1));
+    vector<int> steps_last = {1,2,4,8,16};
+    KeyGenerator keygen_last(context_last, sk_last);
+    keygen_last.create_galois_keys(steps, gal_keys_last);
+    //////////////////////////////////////
+
+    vector<vector<Ciphertext>> packedSICfromPhase1(numcores,vector<Ciphertext>(numOfTransactions/numcores/poly_modulus_degree)); // Assume numOfTransactions/numcores/poly_modulus_degree is integer, pad if needed
+
+    NTL::SetNumThreads(numcores);
+    SecretKey secret_key_blank;
+
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    chrono::microseconds time_diff;
+    time_start = chrono::high_resolution_clock::now();
+
+    MemoryPoolHandle my_pool = MemoryPoolHandle::New();
+    auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
+    NTL_EXEC_RANGE(numcores, first, last);
+    for (int i = first; i < last; i++) {
+        counter[i] = numOfTransactions/numcores*i;
+
+        size_t j = 0;
+        while(j < numOfTransactions/numcores/poly_modulus_degree) {
+            if (!i)
+                cout << "Phase 1, Core " << i << ", Batch " << j << endl;
+            loadClues(SICPVW_multicore[i], counter[i], counter[i]+poly_modulus_degree, params);
+            packedSICfromPhase1[i][j] = serverOperations1obtainPackedSIC(SICPVW_multicore[i], switchingKey, relin_keys, gal_keys,
+                                                            poly_modulus_degree, context, params, poly_modulus_degree, false);
+            j++;
+            counter[i] += poly_modulus_degree;
+            SICPVW_multicore[i].clear();
+        }
     }
+    NTL_EXEC_RANGE_END;
+    MemoryManager::SwitchProfile(std::move(old_prof));
 
-    return res;
-}
+    // step 4. detector operations
+    vector<Ciphertext> lhs_multi(numcores), rhs_multi(numcores);
+    vector<vector<vector<int>>> bipartite_map(numcores);
 
-void add(vector<uint64_t>& res, vector<uint64_t>& a) {
+    bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRtwoM, repeatition_glb, seed_glb);
 
-    for (int i=0; i < res.size(); i++) {
-        res[i] = (res[i] + a[i] ) % 65537;
-    }
-}
+    NTL_EXEC_RANGE(numcores, first, last);
+    for (int i = first; i < last; i++) {
+        MemoryPoolHandle my_pool = MemoryPoolHandle::New();
+        auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
+        size_t j = 0;
+        counter[i] = numOfTransactions/numcores*i;
 
-void test() {
-
-    const vector<int> targetId = {16807, 10779, 19490, 53622, 29521, 48834, 35027, 45850, 55377, 36010, 26498, 63962, 43056, 55158, 52700, 62331};
-    int tempn;
-    vector<vector<uint64_t>> cluePoly(poly_modulus_degree_glb);
-    for (tempn = 1; tempn < 450; tempn *= 2) {}
-
-    // vector<vector<uint64_t>> as(tempn);
-
-    loadData(cluePoly, 0, poly_modulus_degree_glb, "cluePoly", 454 * id_size_glb);
-    // for (int i = 0; i < tempn; i++) {
-    //     as[i].resize(cluePoly.size());
-    //     for (int id_index = 0; id_index < id_size_glb; id_index++) {
-    //         vector<uint64_t> vectorOfA(cluePoly.size());
-    //         // cluePoly[i][j] = cluePoly.size() x id_size_glb
-    //         // where, the row: newCluePoly[i] = i-th msg, (i + j) % tempn row of the original matrix 
-    //         for (int j = 0; j < cluePoly.size(); j++) {
-    //             int row_index = (j + i) % tempn;
-    //             int col_index = (j + id_index) % id_size_glb;
-    //             if (row_index >= 450) {
-    //                 vectorOfA[j] = 0;
-    //             } else {
-    //                 vectorOfA[j] = cluePoly[j][row_index * id_size_glb + col_index];
-    //             }
-    //         }
-
-    //         vector<uint64_t> tempid = generateTargetId(id_index, cluePoly.size());
-    //         vector<uint64_t> t = multi(vectorOfA, tempid);
-    //         add(as[i], t);
-    //     }
-    // }
-    vector<vector<uint64_t>> b_parts(4);
-    for (tempn = 1; tempn < id_size_glb; tempn *= 2) {}
-    for (int i = 0; i < tempn; i++) {
-        for (int e = 0; e < 4; e++) {
-            b_parts[e].resize(cluePoly.size());
-            vector<uint64_t> vectorOfB(cluePoly.size());
-            for (size_t j = 0; j < cluePoly.size(); j++) {
-                int the_index = (i+int(j))%tempn;
-                if (the_index >= id_size_glb) {
-                    vectorOfB[j] = 0;
-                } else {
-                    vectorOfB[j] = cluePoly[j][(450 + e) * id_size_glb + the_index];
-                }
+        while (j < numOfTransactions/numcores/poly_modulus_degree) {
+            if(!i)
+                cout << "Phase 2-3, Core " << i << ", Batch " << j << endl;
+            loadData(payload_multicore[i], counter[i], counter[i]+poly_modulus_degree);
+            Ciphertext templhs, temprhs;
+            serverOperations2therest(templhs, bipartite_map[i], temprhs,
+                            packedSICfromPhase1[i][j], payload_multicore[i], relin_keys, gal_keys_next,
+                            poly_modulus_degree, context_next, context_last, params, poly_modulus_degree, counter[i]);
+            if (j == 0) {
+                lhs_multi[i] = templhs;
+                rhs_multi[i] = temprhs;
+            } else {
+                evaluator.add_inplace(lhs_multi[i], templhs);
+                evaluator.add_inplace(rhs_multi[i], temprhs);
             }
-
-            vector<uint64_t> tempid = generateTargetId(i, cluePoly.size());
-            vector<uint64_t> t = multi(vectorOfB, tempid);
-            add(b_parts[e], t);
+            j++;
+            payload_multicore[i].clear();
         }
+        MemoryManager::SwitchProfile(std::move(old_prof));
+    }
+    NTL_EXEC_RANGE_END;
+
+    for (int i = 1; i < numcores; i++) {
+        evaluator.add_inplace(lhs_multi[0], lhs_multi[i]);
+        evaluator.add_inplace(rhs_multi[0], rhs_multi[i]);
     }
 
-    for (int i=0; i<b_parts[0].size(); i++) {
-        for (int j=0; j<b_parts.size(); j++) {
-            cout << b_parts[j][i] << " ";
-        }
-        cout << endl;
-        verify(targetId, i);
-        cout << "--------------------------------------------------------------------------" << endl;
-    }    
-}
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << "\nDetector runnimg time: " << time_diff.count() << "us." << "\n";
 
+    stringstream data_streamdg, data_streamdg2;
+    cout << "Digest size: " << rhs_multi[0].save(data_streamdg) + lhs_multi[0].save(data_streamdg2) << " bytes" << endl;
+
+    // step 5. receiver decoding
+    bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions,OMRtwoM,repeatition_glb,seed_glb);
+    time_start = chrono::high_resolution_clock::now();
+    auto res = receiverDecoding(lhs_multi[0], bipartite_map[0], rhs_multi[0],
+                        poly_modulus_degree, secret_key, context, numOfTransactions);
+    time_end = chrono::high_resolution_clock::now();
+    time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+    cout << "\nRecipient runnimg time: " << time_diff.count() << "us." << "\n";
+
+    if (checkRes(expected, res))
+        cout << "Result is correct!" << endl;
+    else
+        cout << "Overflow" << endl;
+}
