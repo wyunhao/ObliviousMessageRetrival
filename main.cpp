@@ -141,7 +141,7 @@ int main() {
 
         case 18:
             numcores = 1;
-            GOMR1_FG();
+            testMRE();
             break;
 
         case 0:
