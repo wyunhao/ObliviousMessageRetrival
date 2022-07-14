@@ -66,17 +66,34 @@ vector<vector<uint64_t>> preparingTransactionsFormal(vector<int>& pertinentMsgIn
 // Phase 1, obtaining PV's
 Ciphertext serverOperations1obtainPackedSIC(vector<PVWCiphertext>& SICPVW, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
                             const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params,
-                            const int numOfTransactions, bool PVW = true) {
+                            const int numOfTransactions) {
     Evaluator evaluator(context);
     
     vector<Ciphertext> packedSIC(params.ell);
-    computeBplusASPVWOptimized(packedSIC, SICPVW, switchingKey, gal_keys, context, params, PVW);
+    computeBplusASPVWOptimized(packedSIC, SICPVW, switchingKey, gal_keys, context, params);
 
     int rangeToCheck = 850; // range check is from [-rangeToCheck, rangeToCheck-1]
     newRangeCheckPVW(packedSIC, rangeToCheck, relin_keys, degree, context, params);
 
     return packedSIC[0];
 }
+
+
+Ciphertext serverOperations1obtainPackedSICtest(vector<PVWCiphertext>& SICPVW, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
+                            const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params,
+                            const int numOfTransactions, const SecretKey& sk) {
+    Evaluator evaluator(context);
+    
+    vector<Ciphertext> packedSIC(params.ell);
+    computeBplusASPVWOptimizedtest(packedSIC, SICPVW, switchingKey, gal_keys, context, params, sk);
+
+    int rangeToCheck = 850; // range check is from [-rangeToCheck, rangeToCheck-1]
+    newRangeCheckPVW(packedSIC, rangeToCheck, relin_keys, degree, context, params);
+
+    return packedSIC[0];
+}
+
+
 
 // Phase 1, obtaining PV's based on encrypted targetId
 Ciphertext serverOperations1obtainPackedSICWithCluePoly(vector<vector<uint64_t>>& cluePoly, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
@@ -525,11 +542,12 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
 
 
 // similar to preparingTransactionsFormal but for fixed group GOMR which requires a MREgroupPK for each message.
-vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices, MREpk& pk, int numOfTransactions,
+vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices, vector<MREgroupPK>& pk, int numOfTransactions,
                            int pertinentMsgNum, const PVWParam& params, const int crs) {
     srand (time(NULL));
 
     vector<vector<uint64_t>> ret;
+    vector<int> zeros(params.ell, 0);
 
     cout << "Expected Message Indices: ";
 
@@ -544,18 +562,23 @@ vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices,
 
     cout << endl;
     for(int i = 0; i < numOfTransactions; i++){
-        MREgroupPK groupPK;
+        PVWCiphertext tempclue;
+
         if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
-            groupPK = MREgeneratePK(params, pk, crs);
+            MREEncPK(tempclue, zeros, pk, params);
             ret.push_back(loadDataSingle(i));
         } else {
-            int temp_crs = rand() % params.q;
-            vector<MREsk> SK = MREgenerateSK(params);
-            MREpk PK = MREgeneratePartialPK(params, SK, temp_crs);
-            groupPK = MREgeneratePK(params, PK, temp_crs);
+            // int temp_crs = rand() % params.q;
+            // vector<MREsk> groupSK = MREgenerateSK(params);
+            // vector<MREpk> partialPK = MREgeneratePartialPK(params, groupSK, temp_crs);
+            // vector<MREgroupPK> groupPK = MREgeneratePK(params, partialPK, temp_crs);
+            // MREEncPK(tempclue, zeros, groupPK, params);
+
+            auto sk2 = PVWGenerateSecretKey(params);
+            PVWEncSK(tempclue, zeros, sk2, params);
         }
 
-        saveMREGroupPK(groupPK, i);
+        saveClues(tempclue, i);
     }
 
     return ret;

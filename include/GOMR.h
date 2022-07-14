@@ -972,7 +972,8 @@ size_t poly_modulus_degree = poly_modulus_degree_glb;
     int crs = 21; // TODO: follow the seal convention!!!!!
     auto params = PVWParam(450 + partial_size_glb, 65537, 1.3, 16000, 4);
     vector<MREsk> groupSK = MREgenerateSK(params);
-    MREpk groupPK = MREgeneratePartialPK(params, groupSK, crs);
+    vector<MREpk> partialPK = MREgeneratePartialPK(params, groupSK, crs);
+    vector<MREgroupPK> groupPK = MREgeneratePK(params, partialPK, crs);
     cout << "Finishing generating pk for targeted recipient group\n";
 
     // step 2. prepare transactions
@@ -1092,8 +1093,8 @@ size_t poly_modulus_degree = poly_modulus_degree_glb;
             if (!i)
                 cout << "Phase 1, Core " << i << ", Batch " << j << endl;
             loadClues(SICPVW_multicore[i], counter[i], counter[i]+poly_modulus_degree, params);
-            packedSICfromPhase1[i][j] = serverOperations1obtainPackedSIC(SICPVW_multicore[i], switchingKey, relin_keys, gal_keys,
-                                                            poly_modulus_degree, context, params, poly_modulus_degree, false);
+            packedSICfromPhase1[i][j] = serverOperations1obtainPackedSICtest(SICPVW_multicore[i], switchingKey, relin_keys, gal_keys,
+                                                            poly_modulus_degree, context, params, poly_modulus_degree, secret_key);
             j++;
             counter[i] += poly_modulus_degree;
             SICPVW_multicore[i].clear();

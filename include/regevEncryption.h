@@ -184,7 +184,7 @@ PVWpk PVWGeneratePublicKey(const PVWParam& param, const PVWsk& sk){
     return pk;
 }
 
-void PVWEncPK(PVWCiphertext& ct, const vector<int>& msg, const PVWpk& pk, const PVWParam& param){
+void PVWEncPK(PVWCiphertext& ct, const vector<int>& msg, const PVWpk& pk, const PVWParam& param) {
     NativeInteger q = param.q;
     ct.a = NativeVector(param.n);
     ct.b = NativeVector(param.ell);

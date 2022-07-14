@@ -416,7 +416,7 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
 // compute b - as with packed swk but also only requires one rot key
 void computeBplusASPVWOptimized(vector<Ciphertext>& output, \
         const vector<PVWCiphertext>& toPack, vector<Ciphertext>& switchingKey, const GaloisKeys& gal_keys,
-        const SEALContext& context, const PVWParam& param, bool PVW = true) {
+        const SEALContext& context, const PVWParam& param) {
     MemoryPoolHandle my_pool = MemoryPoolHandle::New(true);
     auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
 
@@ -462,7 +462,85 @@ void computeBplusASPVWOptimized(vector<Ciphertext>& output, \
     for(int i = 0; i < param.ell; i++){
         vector<uint64_t> vectorOfInts(toPack.size());
         for(size_t j = 0; j < toPack.size(); j++){
-            vectorOfInts[j] = PVW ? uint64_t((toPack[j].b[i].ConvertToInt() - 16384) % 65537) : uint64_t(toPack[j].b[i].ConvertToInt());
+            vectorOfInts[j] = uint64_t((toPack[j].b[i].ConvertToInt() - 16384) % 65537);
+            // 16384 here is due to the implementation of PVW ciphertext. Needs to shift by ~q/4 so that the decryption is around 0
+        }
+        Plaintext plaintext;
+
+        batch_encoder.encode(vectorOfInts, plaintext);
+        evaluator.negate_inplace(output[i]);
+        evaluator.add_plain_inplace(output[i], plaintext);
+        evaluator.mod_switch_to_next_inplace(output[i]); 
+    }
+    MemoryManager::SwitchProfile(std::move(old_prof));
+}
+
+
+
+void computeBplusASPVWOptimizedtest(vector<Ciphertext>& output, \
+        const vector<PVWCiphertext>& toPack, vector<Ciphertext>& switchingKey, const GaloisKeys& gal_keys,
+        const SEALContext& context, const PVWParam& param, const SecretKey& sk) {
+    MemoryPoolHandle my_pool = MemoryPoolHandle::New(true);
+    auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
+
+    int tempn;
+    for(tempn = 1; tempn < param.n; tempn*=2){}
+
+    Evaluator evaluator(context);
+    Decryptor decryptor(context, sk);
+    BatchEncoder batch_encoder(context);
+    size_t slot_count = batch_encoder.slot_count();
+    if(toPack.size() > slot_count){
+        cerr << "Please pack at most " << slot_count << " PVW ciphertexts at one time." << endl;
+        return;
+    }
+
+    for(int i = 0; i < tempn; i++){
+        vector<uint64_t> vectorOfInts(toPack.size());
+        for(size_t j = 0; j < toPack.size(); j++){
+            int the_index = (i+int(j))%tempn;
+            if(the_index >= param.n) {
+                vectorOfInts[j] = 0;
+            } else {
+                vectorOfInts[j] = uint64_t((toPack[j].a[the_index].ConvertToInt()));
+            }
+        }
+
+        Plaintext plaintext;
+        batch_encoder.encode(vectorOfInts, plaintext);
+        
+        for(int j = 0; j < param.ell; j++){
+            if(i == 0){
+                evaluator.multiply_plain(switchingKey[j], plaintext, output[j]); // times s[i]
+            }
+            else{
+                Ciphertext temp;
+                evaluator.multiply_plain(switchingKey[j], plaintext, temp);
+                evaluator.add_inplace(output[j], temp);
+            }
+            // rotate one slot at a time
+            evaluator.rotate_rows_inplace(switchingKey[j], 1, gal_keys);
+        }
+    }
+
+    for (int l=0; l<param.ell; l++) {
+        // Try to decode the output before negate real b
+        Plaintext plain_result_test;
+        vector<uint64_t> pod_result_test(poly_modulus_degree_glb);
+        decryptor.decrypt(output[l], plain_result_test);
+        batch_encoder.decode(plain_result_test, pod_result_test);
+        cout << "---------------------------------------------------> CHECK CHECK otuput b: " << endl;
+        for (auto i: pod_result_test)
+            cout << i << ' ';
+
+        cout << endl;
+    }
+
+
+    for(int i = 0; i < param.ell; i++){
+        vector<uint64_t> vectorOfInts(toPack.size());
+        for(size_t j = 0; j < toPack.size(); j++){
+            vectorOfInts[j] = uint64_t((toPack[j].b[i].ConvertToInt() - 16384) % 65537);
             // 16384 here is due to the implementation of PVW ciphertext. Needs to shift by ~q/4 so that the decryption is around 0
         }
         Plaintext plaintext;
