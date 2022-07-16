@@ -140,8 +140,8 @@ int main() {
             break;
 
         case 18:
-            numcores = 1;
-            testMRE();
+            numcores = 4;
+            GOMR1_FG();
             break;
 
         case 0:

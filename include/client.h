@@ -255,146 +255,6 @@ long div_mod(long a, long b, long mod = 65537){
 }
 
 inline
-void mult_scalar_vec(vector<uint64_t>& output, const vector<uint64_t>& input, uint64_t k){
-    output.resize(input.size());
-    for(size_t i = 0; i < output.size(); i++){
-        long temp = ((long)input[i]*(long)k)%65537;
-        output[i] = temp;
-        if(output[i] < 0)
-            cerr <<temp << " " << k << " " << input[i] << endl;
-    } 
-}
-
-inline
-void subtract_two_vec_inplace(vector<uint64_t>& output, const vector<uint64_t>& input, int numToSolve = -1){
-    if(output.size() != input.size())
-    {
-        cerr << "substracting size not equal." << endl;
-    }
-    if(numToSolve == -1) numToSolve = input.size();
-    for(int i = 0; i < numToSolve; i++){
-        output[i] -= input[i];
-        output[i] %= 65537; // modulus
-        while(output[i] < 0){
-            output[i] += 65537;
-        }
-    }
-}
- 
-
-inline
-void get_ratio_mult_and_subtract(vector<uint64_t>& outputLhs, const vector<uint64_t>& inputLhs,
-                                 vector<uint64_t>& outputRhs, const vector<uint64_t>& inputRhs,
-                                 const uint64_t whichItem, const int numToSolve = -1)
-{
-    vector<uint64_t> temp(inputLhs.size());
-    uint64_t k = div_mod(outputLhs[whichItem], inputLhs[whichItem]);
-    mult_scalar_vec(temp, inputLhs, k);
-    subtract_two_vec_inplace(outputLhs, temp);
-
-    mult_scalar_vec(temp, inputRhs, k);
-    subtract_two_vec_inplace(outputRhs, temp, numToSolve);
-}
-
-inline
-vector<long> singleSolve(const long& a, const vector<uint64_t>& toSolve, long mod = 65537){
-    long a_rev = modInverse(a, mod);
-    vector<long> res(toSolve.size());
-    for(size_t i = 0; i < toSolve.size(); i++){
-        res[i] = ((long)toSolve[i] * a_rev) % 65537;
-    }
-    return res;
-}
-
-vector<vector<long>> equationSolving(vector<vector<uint64_t>>& lhs, vector<vector<uint64_t>>& rhs, const int& numToSolve = 306){
-    vector<int> recoder(lhs[0].size(), -1);
-    vector<vector<long>> res(recoder.size());
-    size_t counter = 0;
-
-    while(counter < recoder.size()){
-        for(size_t i = 0; i < lhs.size(); i++){
-            if (lhs[i][counter] != 0){
-                if(find(recoder.begin(), recoder.end(), int(i)) != recoder.end()){
-                    continue;
-                }
-                recoder[counter] = i;
-                break;
-            }
-        }
-
-        cout << "LHS: " << endl << lhs << endl << "RHS: " << endl << rhs << endl;
-
-        if(recoder[counter] == -1) {
-            // cout << "no solution" << endl;
-            return vector<vector<long>>(0);
-        }
-
-        for(size_t i = 0; i < lhs.size(); i++) {
-            if ((lhs[i][counter] != 0) && (i != recoder[counter])) {
-                // vector<int> a(lhs[i].size()), b(lhs[recoder[counter]].size()), c(rhs[i].size()), d(rhs[recoder[counter]].size());
-                // for (int k=0;k<lhs[i].size(); k++) {
-                //     a[k] = (int) lhs[i][k];
-                // }
-                // for (int k=0;k<lhs[i].size(); k++) {
-                //     b[k] = (int) lhs[recoder[counter]][k];
-                // }
-                // for (int k=0;k<lhs[i].size(); k++) {
-                //     c[k] = (int) rhs[i][k];
-                // }
-                // for (int k=0;k<lhs[i].size(); k++) {
-                //     d[k] = (int) rhs[recoder[counter]][k];
-                // }
-
-                get_ratio_mult_and_subtract(lhs[i], lhs[recoder[counter]], rhs[i], rhs[recoder[counter]], counter, numToSolve);
-                if (all_of(lhs[i].begin(), lhs[i].end(), [](int j) { return j==0; })) {
-                    lhs.erase(lhs.begin() + i);
-                    rhs.erase(rhs.begin() + i);
-                    return equationSolving(lhs, rhs, numToSolve);
-                }
-            }
-        }
-        counter++;
-    }
-
-    counter = 0;
-    for(size_t i = 0; i < recoder.size(); i++){
-        res[i] = singleSolve(lhs[recoder[counter]][counter], rhs[recoder[counter]]);
-        counter++;
-    }
-    return res;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-inline
 void mult_scalar_vec(vector<int>& output, const vector<int>& input, int k){
     output.resize(input.size());
     for(size_t i = 0; i < output.size(); i++){
@@ -462,8 +322,6 @@ vector<vector<long>> equationSolving(vector<vector<int>>& lhs, vector<vector<int
             }
         }
 
-        // cout << "LHS: " << endl << lhs << endl << "RHS: " << endl << rhs << endl;
-
         if(recoder[counter] == -1) {
             // cout << "no solution" << endl;
             return vector<vector<long>>(0);
@@ -509,7 +367,8 @@ void assignVariable(vector<vector<long>>& res, vector<int>& lhs, int rhs) {
     for (int i = 0; i < lhs.size(); i++) {
         if (lhs[i] != 0 && i != lastIndex) {
             res[i][0] = rand() % 65537;
-            uint64_t temp = (rhs - (lhs[i] * res[i][0])) % 65537;
+            long temp = (rhs - (lhs[i] * res[i][0])) % 65537;
+            temp = temp < 0 ? temp + 65537 : temp;
             rhs = temp;
         }
     }
@@ -525,7 +384,8 @@ void updateEquation(vector<vector<long>>& res, vector<vector<int>>& lhs, vector<
     for (int i = 0; i < lhs.size(); i++) {
         for (int j = 0; j < res.size(); j++) {
             if (res[j][0] > 0 && lhs[i][j] != 0) {
-                uint64_t temp = (rhs[i][0] - lhs[i][j] * res[j][0]) % 65537;
+                long temp = (rhs[i][0] - lhs[i][j] * res[j][0]) % 65537;
+                temp = temp < 0 ? temp + 65537 : temp;
                 rhs[i][0] = temp;
                 lhs[i][j] = 0;
             }

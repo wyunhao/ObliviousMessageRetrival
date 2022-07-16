@@ -79,22 +79,6 @@ Ciphertext serverOperations1obtainPackedSIC(vector<PVWCiphertext>& SICPVW, vecto
 }
 
 
-Ciphertext serverOperations1obtainPackedSICtest(vector<PVWCiphertext>& SICPVW, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
-                            const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params,
-                            const int numOfTransactions, const SecretKey& sk) {
-    Evaluator evaluator(context);
-    
-    vector<Ciphertext> packedSIC(params.ell);
-    computeBplusASPVWOptimizedtest(packedSIC, SICPVW, switchingKey, gal_keys, context, params, sk);
-
-    int rangeToCheck = 850; // range check is from [-rangeToCheck, rangeToCheck-1]
-    newRangeCheckPVW(packedSIC, rangeToCheck, relin_keys, degree, context, params);
-
-    return packedSIC[0];
-}
-
-
-
 // Phase 1, obtaining PV's based on encrypted targetId
 Ciphertext serverOperations1obtainPackedSICWithCluePoly(vector<vector<uint64_t>>& cluePoly, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
                             const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params, const int numOfTransactions){
@@ -542,7 +526,7 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
 
 
 // similar to preparingTransactionsFormal but for fixed group GOMR which requires a MREgroupPK for each message.
-vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices, vector<MREgroupPK>& pk, int numOfTransactions,
+vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices, MREPublicKey& pk, int numOfTransactions,
                            int pertinentMsgNum, const PVWParam& params, const int crs) {
     srand (time(NULL));
 

@@ -1,14 +1,19 @@
 #pragma once
 
-#include<iostream>
-#include<fstream>
-#include<string>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <random>
 #include "regevEncryption.h"
 #include "seal/seal.h"
-#include <NTL/BasicThreadPool.h>
 #include "global.h"
 #include "client.h"
+
+
 using namespace seal;
+
+typedef mt19937 RNG;
+RNG rng; // keep one global instance (per thread)
 
 typedef vector<vector<uint64_t>> MREsharedSK;
 typedef vector<vector<uint64_t>> MREsecretSK;
@@ -43,9 +48,19 @@ struct MREsk{
     {}
 };
 
+// extension of MREgroupPK, used to verify the correctness of A, b in groupPK
+// notice that all data exposed can be shared and public, no secrecy harmed
+struct MREPublicKey {
+    vector<MREgroupPK> groupPK; // size of param.m 
+    vector<MREpk> recipientPK; // size of param.m
 
+    MREPublicKey() {}
+    MREPublicKey(vector<MREgroupPK>& groupPK, vector<MREpk>& recipientPK)
+    : groupPK(groupPK), recipientPK(recipientPK)
+    {}
+};
 
-vector<MREsk> MREgenerateSK(const PVWParam& param, const int partialSize = 32, const int partySize = 8) {
+vector<MREsk> MREgenerateSK(const PVWParam& param, const int partialSize = 40, const int partySize = 8) {
     vector<MREsk> mreSK(partySize);
 
     for (int i = 0; i < partySize; i++) {
@@ -70,30 +85,35 @@ vector<MREsk> MREgenerateSK(const PVWParam& param, const int partialSize = 32, c
     return mreSK;
 }
 
-
-vector<MREpk> MREgeneratePartialPK(const PVWParam& param, const vector<MREsk>& groupSK, const int crs, const int partialSize = 32) {
+vector<MREpk> MREgeneratePartialPK(const PVWParam& param, const vector<MREsk>& groupSK, const int crs, const int partialSize = 40) {
 
     vector<MREpk> pk(param.m);
     vector<uint64_t> A1(param.n - partialSize), b(param.ell);
     vector<vector<uint64_t>> b_prime(groupSK.size());
     vector<MREsharedSK> sharedSK(groupSK.size());
 
+    rng.seed(crs);
+    std::uniform_int_distribution<std::mt19937::result_type> dist(0, 65536); // distribution in range q
+
     for (int w = 0; w < param.m; w++) {
-        srand(w);
         for (int i = 0; i < param.n - partialSize; i++) {
-            A1[i] = rand() % param.q;
+            A1[i] = dist(rng) % param.q;
         }
         for (int i = 0; i < param.ell; i++) {
-            b[i] = rand() % param.q;
+            b[i] = dist(rng) % param.q;
         }
 
         for (int i = 0; i < groupSK.size(); i++) {
             b_prime[i].resize(param.ell);
 
             for (int l = 0; l < param.ell; l++) {
-                uint64_t temp = 0;
+                long temp = 0;
                 for (int j = 0; j < param.n - partialSize; j++) {
                     temp = (temp + groupSK[i].secretSK[l][j] * A1[j]) % param.q;
+                    temp = temp < 0 ? temp + param.q : temp;
+                }
+                if (b[l] < temp) {
+                    b[l] += param.q;
                 }
                 b_prime[i][l] = (b[l] - temp) % param.q;
                 // TODO: need gaussian error here for b_prime
@@ -111,14 +131,15 @@ vector<MREpk> MREgeneratePartialPK(const PVWParam& param, const vector<MREsk>& g
 }
 
 
-vector<MREgroupPK> MREgeneratePK(const PVWParam& param, const vector<MREpk>& mrePK, const int crs, const int partySize = 8, const int partialSize = 32) {
-    // srand(crs);
+MREPublicKey MREgeneratePK(const PVWParam& param, vector<MREpk>& mrePK, const int crs, const int partySize = 8, const int partialSize = 40) {
+    rng.seed(crs);
+    std::uniform_int_distribution<std::mt19937::result_type> dist(0, 65536);
 
     vector<MREgroupPK> groupPK(param.m);
 
     for (int w = 0; w < param.m; w++) {
         vector<uint64_t> A(param.n), b(param.ell);
-        vector<vector<uint64_t>> rhs(param.ell * partySize), lhs(param.ell * partySize);
+        vector<vector<int>> rhs(param.ell * partySize), lhs(param.ell * partySize);
 
         for (int i = 0; i < param.ell * partySize; i++) {
             rhs[i].resize(1);
@@ -139,137 +160,62 @@ vector<MREgroupPK> MREgeneratePK(const PVWParam& param, const vector<MREpk>& mre
             }
         }
 
-        vector<vector<long>> res = equationSolving(lhs, rhs, -1);
-        srand(w);
+        vector<vector<long>> res = equationSolvingRandom(lhs, rhs, -1);
+
         int i = 0;
         for (; i < param.n - partialSize; i++) {
-            A[i] = rand() % param.q;
+            A[i] = dist(rng) % param.q;
         }
         for (; i < param.n; i++) {
             A[i] = res[i - param.n + partialSize][0];
         }
         for (int i = 0; i < param.ell; i++) {
-            b[i] = rand() % param.q;
+            b[i] = dist(rng) % param.q;
         }
-        // if (w == 0) {
-        //     cout << w << ": " << A << endl << b << endl;
-        // }
         groupPK[w] = MREgroupPK(A, b);
     }
 
-    return groupPK;
+    return MREPublicKey(groupPK, mrePK);
 }
 
+bool verifyPK(const PVWParam& param, const MREgroupPK& groupPK, const vector<vector<uint64_t>>& b_prime, const vector<MREsharedSK>& recipientPK,
+              const int partialSize = 40) {
+    for (int r = 0; r < recipientPK.size(); r++) {
+        for (int l = 0; l < param.ell; l++) {
+            long b_temp = 0;
+            for (int i = 0; i < param.n; i++) {
+                if (i >= param.n - partialSize) {
+                    b_temp = (b_temp + groupPK.A[i] * recipientPK[r][l][i - param.n + partialSize]) % param.q;
+                }
+            }
+            if (b_prime[r][l] != b_temp) {
+                return false;
+            }
+        }
+    }
 
-void MREEncPK(PVWCiphertext& ct, const vector<int>& msg, const vector<MREgroupPK>& pk, const PVWParam& param) {
+    return true;
+}
+
+void MREEncPK(PVWCiphertext& ct, const vector<int>& msg, const MREPublicKey& pk, const PVWParam& param) {
     NativeInteger q = param.q;
     ct.a = NativeVector(param.n);
     ct.b = NativeVector(param.ell);
-    for(size_t i = 0; i < pk.size(); i++){
+    for(size_t i = 0; i < pk.groupPK.size(); i++){
+        if (!verifyPK(param, pk.groupPK[i], pk.recipientPK[i].b_prime, pk.recipientPK[i].shareSK)) {
+            // cout << "skip " << i << endl;
+            continue;
+        }
         if (rand()%2){
             for(int j = 0; j < param.n; j++){
-                ct.a[j].ModAddFastEq(pk[i].A[j], q);
+                ct.a[j].ModAddFastEq(pk.groupPK[i].A[j], q);
             }
             for(int j = 0; j < param.ell; j++){
-                ct.b[j].ModAddFastEq(pk[i].b[j], q);
+                ct.b[j].ModAddFastEq(pk.groupPK[i].b[j], q);
             }
         }
     }
     for(int j = 0; j < param.ell; j++){
         msg[j]? ct.b[j].ModAddFastEq(3*q/4, q) : ct.b[j].ModAddFastEq(q/4, q);
     }
-}
-
-
-void testMRE() {
-    vector<vector<int>> lhs = {{1,0,65530},{0,1,42237}, {0,0,65535}}, rhs = {{4},{8}, {51887}};
-    vector<vector<long>> res = equationSolving(lhs, rhs, -1);
-
-    cout << res << endl;
-
-    // int size = 10;
-    // vector<uint64_t> res(size);
-    // vector<vector<int>> lhs(size), rhs(size);
-
-    // for (int i=0; i<size;i++) {
-    //     res[i] = rand() % 65537;
-    // }
-
-    // for (int i=0; i<size;i++) {
-    //     lhs[i].resize(size);
-    //     for (int j=0; j<size; j++) {
-    //         lhs[i][j] = rand() % 65537;
-    //     }
-    // }
-
-    // for (int i=0; i<size;i++) {
-    //     rhs[i].resize(1);
-    //     uint64_t temp = 0;
-    //     for (int j=0; j<size; j++) {
-    //         temp = (temp + lhs[i][j] * res[j]) % 65537;
-    //         temp = temp < 0 ? temp + 65537 : temp;
-    //     }
-    //     rhs[i][0] = temp < 0 ? temp + 65537 : temp;
-    // }
-    // cout << endl << rhs << endl << lhs << endl;
-
-    // vector<vector<long>> check = equationSolving(lhs, rhs, -1);
-    // cout << endl << res << endl << check << endl;
-
-
-
-
-    // int partialSize = 32;
-    // auto param = PVWParam(450 + partialSize, 65537, 1.3, 1, 4);
-    // int crs = 21;
-
-    // vector<MREsk> testSK = MREgenerateSK(param);
-    // vector<MREpk> testPK = MREgeneratePartialPK(param, testSK, crs);
-    // vector<MREgroupPK> groupPK = MREgeneratePK(param, testPK, crs);
-
-    // cout << "***************************************************************** " << endl;
-
-    // vector<vector<uint64_t>> result(testSK.size());
-
-    // cout << "expected b part : " << endl << groupPK[0].b << endl;
-    // cout << "b prime: " << endl << testPK[0].b_prime << endl;
-
-    // for (int i=0; i<testSK.size(); i++) {
-    //     result[i].resize(param.ell);
-        
-    //     for (int l=0; l<param.ell; l++) {
-    //         uint64_t temp = 0;
-    //         for (int j=0; j<groupPK[0].A.size(); j++) {
-    //             if (j < param.n - partialSize) {
-    //                 // temp = (temp + groupPK[107].A[j] * testSK[i].secretSK[l][j]) % param.q;
-    //             } else {
-    //                 temp = (temp + groupPK[0].A[j] * testSK[i].shareSK[l][j - param.n + partialSize]) % param.q;
-    //             }
-    //         }
-    //         result[i][l] = temp;
-    //     }
-    // }
-    // cout << endl <<  "result b part: " << endl << result << endl;
-
-    // auto params = PVWParam(450 + 40, 65537, 1.3, 16000, 4); 
-    // auto sk = PVWGenerateSecretKey(params);
-    // auto pk = PVWGeneratePublicKey(params, sk);
-
-    // cout << "check size: " << sk.size() << endl;
-
-    // PVWCiphertext pktest = pk[0];
-    // for (int i=0; i < sk.size(); i++) {
-    //     cout << "**** " << i << " ****" << endl;
-    //     int temp;
-    //     for (int j=0; j<params.n; j++) {
-    //         temp = (temp + sk[i][j].ConvertToInt() * pktest.a[j].ConvertToInt()) % params.q;
-    //     }
-    //     cout << temp << " ";
-    //     cout << endl;
-
-    //     for (int l = 0; l < params.ell; l++) {
-    //         cout << pk[i].b[l].ConvertToInt() << " ";
-    //     }
-    //     cout << endl;
-    // }
 }

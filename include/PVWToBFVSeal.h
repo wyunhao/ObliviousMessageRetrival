@@ -523,20 +523,6 @@ void computeBplusASPVWOptimizedtest(vector<Ciphertext>& output, \
         }
     }
 
-    for (int l=0; l<param.ell; l++) {
-        // Try to decode the output before negate real b
-        Plaintext plain_result_test;
-        vector<uint64_t> pod_result_test(poly_modulus_degree_glb);
-        decryptor.decrypt(output[l], plain_result_test);
-        batch_encoder.decode(plain_result_test, pod_result_test);
-        cout << "---------------------------------------------------> CHECK CHECK otuput b: " << endl;
-        for (auto i: pod_result_test)
-            cout << i << ' ';
-
-        cout << endl;
-    }
-
-
     for(int i = 0; i < param.ell; i++){
         vector<uint64_t> vectorOfInts(toPack.size());
         for(size_t j = 0; j < toPack.size(); j++){

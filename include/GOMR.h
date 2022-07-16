@@ -973,7 +973,7 @@ size_t poly_modulus_degree = poly_modulus_degree_glb;
     auto params = PVWParam(450 + partial_size_glb, 65537, 1.3, 16000, 4);
     vector<MREsk> groupSK = MREgenerateSK(params);
     vector<MREpk> partialPK = MREgeneratePartialPK(params, groupSK, crs);
-    vector<MREgroupPK> groupPK = MREgeneratePK(params, partialPK, crs);
+    MREPublicKey groupPK = MREgeneratePK(params, partialPK, crs);
     cout << "Finishing generating pk for targeted recipient group\n";
 
     // step 2. prepare transactions
@@ -1017,7 +1017,7 @@ size_t poly_modulus_degree = poly_modulus_degree_glb;
     Ciphertext packedSIC;
     switchingKey.resize(params.ell);
     // w.l.o.g, use the first member in the group to test, ideally, any one should be able to detect same pertinent messages
-    genSwitchingKeyMREPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, groupSK[0], params);
+    genSwitchingKeyMREPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, groupSK[4], params);
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
@@ -1051,7 +1051,7 @@ size_t poly_modulus_degree = poly_modulus_degree_glb;
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512};
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
 
     //////////////////////////////////////
@@ -1093,8 +1093,8 @@ size_t poly_modulus_degree = poly_modulus_degree_glb;
             if (!i)
                 cout << "Phase 1, Core " << i << ", Batch " << j << endl;
             loadClues(SICPVW_multicore[i], counter[i], counter[i]+poly_modulus_degree, params);
-            packedSICfromPhase1[i][j] = serverOperations1obtainPackedSICtest(SICPVW_multicore[i], switchingKey, relin_keys, gal_keys,
-                                                            poly_modulus_degree, context, params, poly_modulus_degree, secret_key);
+            packedSICfromPhase1[i][j] = serverOperations1obtainPackedSIC(SICPVW_multicore[i], switchingKey, relin_keys, gal_keys,
+                                                            poly_modulus_degree, context, params, poly_modulus_degree);
             j++;
             counter[i] += poly_modulus_degree;
             SICPVW_multicore[i].clear();
@@ -1162,5 +1162,5 @@ size_t poly_modulus_degree = poly_modulus_degree_glb;
     if (checkRes(expected, res))
         cout << "Result is correct!" << endl;
     else
-        cout << "Overflow" << endl;
+        cout << "Overflow" << endl << res << endl;
 }
