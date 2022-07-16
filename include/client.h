@@ -230,6 +230,30 @@ void formLhsWeights(vector<vector<int>>& lhs, map<int, pair<int, int>>& pertinen
 
 /////////////////////////// For equation solving
 
+// The following two functions are from: https://www.geeksforgeeks.org/multiplicative-inverse-under-modulo-m/
+// To compute x^y under modulo m
+inline
+long power(long x, long y, long m)
+{
+    if (y == 0)
+        return 1;
+    long p = power(x, y / 2, m) % m;
+    p = (p * p) % m;
+ 
+    return (y % 2 == 0) ? p : (x * p) % m;
+}
+
+inline
+long modInverse(long a, long m)
+{
+    return power(a, m - 2, m);
+}
+
+inline
+long div_mod(long a, long b, long mod = 65537){
+    return (a*modInverse(b, mod)) % mod;
+}
+
 inline
 void mult_scalar_vec(vector<int>& output, const vector<int>& input, int k){
     output.resize(input.size());
@@ -254,32 +278,7 @@ void subtract_two_vec_inplace(vector<int>& output, const vector<int>& input, int
         while(output[i] < 0){
             output[i] += 65537;
         }
-
     }
-}
- 
-// The following two functions are from: https://www.geeksforgeeks.org/multiplicative-inverse-under-modulo-m/
-// To compute x^y under modulo m
-inline
-long power(long x, long y, long m)
-{
-    if (y == 0)
-        return 1;
-    long p = power(x, y / 2, m) % m;
-    p = (p * p) % m;
- 
-    return (y % 2 == 0) ? p : (x * p) % m;
-}
-
-inline
-long modInverse(long a, long m)
-{
-    return power(a, m - 2, m);
-}
-
-inline
-long div_mod(long a, long b, long mod = 65537){
-    return (a*modInverse(b, mod)) % mod;
 }
 
 inline
@@ -322,7 +321,9 @@ vector<vector<long>> equationSolving(vector<vector<int>>& lhs, vector<vector<int
                 break;
             }
         }
+
         if(recoder[counter] == -1) {
+            // cout << "no solution" << endl;
             return vector<vector<long>>(0);
         }
 
@@ -345,4 +346,66 @@ vector<vector<long>> equationSolving(vector<vector<int>>& lhs, vector<vector<int
         counter++;
     }
     return res;
+}
+
+
+// Pick random values to satisfy multi-variable equation.
+// For example, given x + y = 10, we might output {2, 8}.
+void assignVariable(vector<vector<long>>& res, vector<int>& lhs, int rhs) {
+    if (res.size() != lhs.size())
+        cerr << "Coefficient and variable size not match." << endl;
+
+    int lastIndex = lhs.size() - 1;
+
+    for (int i = lhs.size(); i > 0; i--) {
+        if (lhs[i-1] != 0) {
+            lastIndex = i-1;
+            break;
+        }
+    }
+
+    for (int i = 0; i < lhs.size(); i++) {
+        if (lhs[i] != 0 && i != lastIndex) {
+            res[i][0] = rand() % 65537;
+            long temp = (rhs - (lhs[i] * res[i][0])) % 65537;
+            temp = temp < 0 ? temp + 65537 : temp;
+            rhs = temp;
+        }
+    }
+
+    res[lastIndex][0] = div_mod(rhs % 65537, lhs[lastIndex]);
+    if (res[lastIndex][0] < 0)
+        res[lastIndex][0] += 65537;
+}
+
+// Given solved variables with their values, update the remaining equations.
+// For example, with equation; x + y + 2z = 10, and z = 2, updated equation would be x + y = 6.
+void updateEquation(vector<vector<long>>& res, vector<vector<int>>& lhs, vector<vector<int>>& rhs) {
+    for (int i = 0; i < lhs.size(); i++) {
+        for (int j = 0; j < res.size(); j++) {
+            if (res[j][0] > 0 && lhs[i][j] != 0) {
+                long temp = (rhs[i][0] - lhs[i][j] * res[j][0]) % 65537;
+                temp = temp < 0 ? temp + 65537 : temp;
+                rhs[i][0] = temp;
+                lhs[i][j] = 0;
+            }
+        }
+    }
+}
+
+
+// TODO: use this to refactor the previous method solveCluePolynomial
+// similar to equationSolving, but assign random values to variable if the equation coefficient matrix is not full rank, i.e. no solution
+vector<vector<long>> equationSolvingRandom(vector<vector<int>>& lhs, vector<vector<int>>& rhs, const int& numToSolve = -1) {
+    vector<vector<long>> tryRes = equationSolving(lhs, rhs, -1);
+    if (tryRes.empty()) {
+        tryRes.resize(lhs[0].size(), vector<long>(1));
+        while (!lhs.empty()) {
+            assignVariable(tryRes, lhs[lhs.size() - 1], rhs[rhs.size() - 1][0]);
+            lhs.pop_back();
+            rhs.pop_back();
+            updateEquation(tryRes, lhs, rhs);
+        }
+    }
+    return tryRes;
 }
