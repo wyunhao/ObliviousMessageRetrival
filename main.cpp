@@ -130,7 +130,7 @@ int main() {
             break;
 
         case 16:
-            numcores = 1;
+            numcores = 4;
             GOMR1_ObliviousMultiplexer();
             break;
 

@@ -420,12 +420,16 @@ void levelspecificDetectKeySize(){
 //////////////////////////////////////////////////// For Oblivious Multiplexer ////////////////////////////////////////////////////
 
 // Pick random Zq elements as ID of recipients, in form of a (partySize x idSize) matrix.
-vector<vector<int>> initializeRecipientId(int partySize, int idSize, int mod = 65537) {
+vector<vector<int>> initializeRecipientId(const PVWParam& params, int partySize, int idSize) {
     vector<vector<int>> ids(partySize, vector<int> (idSize, -1)); 
 
+    lbcrypto::DiscreteUniformGeneratorImpl<regevSK> dug;
+    dug.SetModulus(params.q);
+
     for (int i = 0; i < ids.size(); i++) {
+        NativeVector temp = dug.GenerateVector(idSize);
         for (int j = 0; j < ids[0].size(); j++) {
-            ids[i][j] = rand() % mod;
+            ids[i][j] = temp[j].ConvertToInt();
         }
     }
 
@@ -460,34 +464,32 @@ vector<vector<long>> solveCluePolynomial(const PVWParam& params, size_t counter,
     loadClues(clues, counter * partySize, counter * partySize + partySize, params);
     prepareClueRhs(rhs, clues, index, prepare);
 
-    tryRes = equationSolving(lhs, rhs, -1);
-    if (tryRes.empty()) {
-        tryRes.resize(lhs[0].size(), vector<long>(1));
-        while (!lhs.empty()) {
-            assignVariable(tryRes, lhs[lhs.size() - 1], rhs[rhs.size() - 1][0]);
-            lhs.pop_back();
-            rhs.pop_back();
-            updateEquation(tryRes, lhs, rhs);
-        }
-    }
+    tryRes = equationSolvingRandom(lhs, rhs, -1);
     return tryRes;
 }
 
 
-void verify(const vector<int>& targetId, int index) {
-    vector<uint64_t> polyFlat = loadDataSingle(index, "cluePoly", 454 * id_size_glb);
-    vector<vector<long>> cluePolynomial(454, vector<long>(id_size_glb));
-    vector<long> res(454, 0);
+bool verify(const PVWParam& params, const vector<int>& targetId, int index) {
+    vector<uint64_t> polyFlat = loadDataSingle(index, "cluePoly", (params.n + params.ell) * id_size_glb);
+    vector<vector<long>> cluePolynomial(params.n + params.ell, vector<long>(id_size_glb));
+    vector<long> res(params.n + params.ell, 0);
 
-    for (int i = 0; i < 454; i++) {
+    for (int i = 0; i < params.n + params.ell; i++) {
         for(int j = 0; j < id_size_glb; j++) {
-            res[i] = (res[i] + polyFlat[i * id_size_glb + j] * targetId[j]) % 65537;
-            res[i] = res[i] < 0 ? res[i] + 65537 : res[i];
+            res[i] = (res[i] + polyFlat[i * id_size_glb + j] * targetId[j]) % params.q;
+            res[i] = res[i] < 0 ? res[i] + params.q : res[i];
         }
     }
 
-    cout << "VERIFY ---> " << index << endl;
-    cout << res << endl;
+    vector<uint64_t> expected = loadDataSingle(index * party_size_glb + party_size_glb - 1, "clues", params.n + params.ell);
+
+    for (int i = 0; i < params.n + params.ell; i++) {
+        if (expected[i] != res[i]) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 // similar to preparingTransactionsFormal but for gOMR with Oblivious Multiplexer.
@@ -496,31 +498,39 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
     vector<vector<int>> ids;
     bool check = false;
 
-    cout << pertinentMsgIndices << endl;
-
     for(int i = 0; i < numOfTransactions; i++){
-        if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
-            check = true;
-            ids = initializeRecipientId(party_size_glb - 1, id_size_glb);
-            ids.push_back(targetId);
-        } else {
-            ids = initializeRecipientId(party_size_glb, id_size_glb);
-        }
-
-        // if i is pertinent for recipient r, then its clue is already generated via given sk, and will be in the same equation
-        // i.e., when multiplied the polynomial matrix with the recipient r's ID, detector will get clue i.
-        vector<vector<long>> cluePolynomial(clueLength, vector<long>(id_size_glb));
-        for (int a = 0; a < clueLength; a++) {
-            vector<vector<long>> temp = solveCluePolynomial(params, i, ids, a, prepare);
-            for(int j = 0; j < id_size_glb; j++){
-                cluePolynomial[a][j] = temp[j][0];
+        while (true) {
+            cout << i << endl;
+            if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
+                check = true;
+                ids = initializeRecipientId(params, party_size_glb - 1, id_size_glb);
+                ids.push_back(targetId);
+            } else {
+                ids = initializeRecipientId(params, party_size_glb, id_size_glb);
             }
-        }
-        saveGroupClues(cluePolynomial, i);
 
-        if (check) {
-            verify(targetId, i);
-            check = false;
+            // if i is pertinent for recipient r, then its clue is already generated via given sk, and will be in the same equation
+            // i.e., when multiplied the polynomial matrix with the recipient r's ID, detector will get clue i.
+            vector<vector<long>> cluePolynomial(clueLength, vector<long>(id_size_glb));
+            for (int a = 0; a < clueLength; a++) {
+                vector<vector<long>> temp = solveCluePolynomial(params, i, ids, a, prepare);
+                for(int j = 0; j < id_size_glb; j++){
+                    cluePolynomial[a][j] = temp[j][0];
+                }
+            }
+            saveGroupClues(cluePolynomial, i);
+
+            if (check) {
+                if (verify(params, targetId, i)) {
+                    check = false;
+                    break;
+                } else {
+                    cout << "!!! Regenerating clue poly for msg: " << i << endl;
+                }
+                check = false;
+            } else {
+                break;
+            }
         }
     }
 }

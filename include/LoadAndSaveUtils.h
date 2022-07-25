@@ -32,6 +32,37 @@ vector<uint64_t> loadDataSingle(int i, const string folder = "payloads", int pay
     return ret;
 }
 
+
+void saveSK(const PVWParam& param, const PVWsk sk) {
+    ofstream datafile;
+    datafile.open ("../data/clues/sk.txt");
+    for (int i = 0; i < param.ell; i++) {
+        for (int j = 0; j < param.n; j++) {
+            datafile << sk[i][j].ConvertToInt() << "\n";
+        }
+    }
+    datafile.close();
+}
+
+
+PVWsk loadSK(const PVWParam& param) {
+    PVWsk sk(param.ell);
+    ifstream datafile;
+    datafile.open ("../data/clues/sk.txt");
+    for (int i = 0; i < param.ell; i++) {
+        sk[i] = NativeVector(param.n);
+        for (int j = 0; j < param.n; j++) {
+            uint64_t temp;
+            datafile >> temp;
+            sk[i][j] = temp;
+        }
+    }
+    datafile.close();
+
+    return sk;
+}
+
+
 void saveClues(const PVWCiphertext& clue, int transaction_num){
     ofstream datafile;
     datafile.open ("../data/clues/"+to_string(transaction_num)+".txt");
@@ -132,6 +163,7 @@ void loadObliviousMultiplexerClues(vector<int> pertinent_msgs, vector<PVWCiphert
         for (int c = 0; c < clueLength; c++) {
             for(int j = 0; j < id_size_glb; j++) {
                 res[c] = (res[c] + polyFlat[c * id_size_glb + j] * targetId[j]) % param.q;
+                res[c] = res[c] < 0 ? res[c] + param.q : res[c];
             }
         }
 
@@ -141,12 +173,6 @@ void loadObliviousMultiplexerClues(vector<int> pertinent_msgs, vector<PVWCiphert
 
         for(int j = 0; j < param.ell; j++, res_ind++){
             clues[i-start].b[j] = res[res_ind];
-        }
-
-        if (find(pertinent_msgs.begin(), pertinent_msgs.end(), i) != pertinent_msgs.end()) {
-            cout << "CHECK CLUES ------------------------------------------- >> " << i << endl;
-            cout << res << endl;
-            cout << "=========================================================" << endl;
         }
     }
 }

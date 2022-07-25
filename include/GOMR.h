@@ -219,7 +219,7 @@ void GOMR1() {
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << "\nDetector runnimg time: " << time_diff.count() << "us." << "\n";
+    cout << "\nDetector running time: " << time_diff.count() << "us." << "\n";
 
     stringstream data_streamdg, data_streamdg2;
     cout << "Digest size: " << rhs_multi[0].save(data_streamdg) + lhs_multi[0].save(data_streamdg2) << " bytes" << endl;
@@ -231,7 +231,7 @@ void GOMR1() {
                         poly_modulus_degree, secret_key, context, numOfTransactions, party_size_glb);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << "\nRecipient runnimg time: " << time_diff.count() << "us." << "\n";
+    cout << "\nRecipient running time: " << time_diff.count() << "us." << "\n";
 
     if(checkRes(expected, res))
         cout << "Result is correct!" << endl;
@@ -456,7 +456,7 @@ void GOMR2() {
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << "\nDetector runnimg time: " << time_diff.count() << "us." << "\n";
+    cout << "\nDetector running time: " << time_diff.count() << "us." << "\n";
 
     stringstream data_streamdg, data_streamdg2;
     auto digsize = rhs_multi[0].save(data_streamdg);
@@ -472,7 +472,7 @@ void GOMR2() {
                         poly_modulus_degree, secret_key, context, numOfTransactions, party_size_glb, 4);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << "\nRecipient runnimg time: " << time_diff.count() << "us." << "\n";
+    cout << "\nRecipient running time: " << time_diff.count() << "us." << "\n";
 
     if(checkRes(expected, res))
         cout << "Result is correct!" << endl;
@@ -500,9 +500,7 @@ void GOMR1_ObliviousMultiplexer() {
     auto pk = PVWGeneratePublicKey(params, sk);
     cout << "Finishing generating sk for PVW cts\n";
 
-    // const vector<int> targetId = initializeRecipientId(1, id_size_glb)[0];
-    const vector<int> targetId = {16807, 10779, 19490, 53622, 29521, 48834, 35027, 45850, 55377, 36010, 26498, 63962, 43056, 55158, 52700, 62331};
-
+    const vector<int> targetId = initializeRecipientId(params, 1, id_size_glb)[0];
     cout << "Recipient Target ID: " << targetId << endl;
 
     // step 2. prepare transactions
@@ -522,7 +520,7 @@ void GOMR1_ObliviousMultiplexer() {
                                                                             60, 60, 60, 60, 60, 60,
                                                                             60, 30, 60 });
     parms.set_coeff_modulus(coeff_modulus);
-    parms.set_plain_modulus(65537);
+    parms.set_plain_modulus(params.q);
 
     prng_seed_type seed;
     for (auto &i : seed)
@@ -582,7 +580,7 @@ void GOMR1_ObliviousMultiplexer() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096};
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;
@@ -688,7 +686,7 @@ void GOMR1_ObliviousMultiplexer() {
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << "\nDetector runnimg time: " << time_diff.count() << "us." << "\n";
+    cout << "\nDetector running time: " << time_diff.count() << "us." << "\n";
 
     stringstream data_streamdg, data_streamdg2;
     cout << "Digest size: " << rhs_multi[0].save(data_streamdg) + lhs_multi[0].save(data_streamdg2) << " bytes" << endl;
@@ -700,7 +698,7 @@ void GOMR1_ObliviousMultiplexer() {
                         poly_modulus_degree, secret_key, context, numOfTransactions);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << "\nRecipient runnimg time: " << time_diff.count() << "us." << "\n";
+    cout << "\nRecipient running time: " << time_diff.count() << "us." << "\n";
 
     if(checkRes(expected, res))
         cout << "Result is correct!" << endl;
@@ -723,7 +721,7 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     auto pk = PVWGeneratePublicKey(params, sk);
     cout << "Finishing generating sk for PVW cts\n";
 
-    const vector<int> targetId = initializeRecipientId(1, id_size_glb)[0];
+    const vector<int> targetId = initializeRecipientId(params, 1, id_size_glb)[0];
     cout << "Recipient Target ID: " << targetId << endl;
 
     // step 2. prepare transactions
@@ -930,7 +928,7 @@ void GOMR1_ObliviousMultiplexer_BFV() {
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << "\nDetector runnimg time: " << time_diff.count() << "us." << "\n";
+    cout << "\nDetector running time: " << time_diff.count() << "us." << "\n";
 
     stringstream data_streamdg, data_streamdg2;
     cout << "Digest size: " << rhs_multi[0].save(data_streamdg) + lhs_multi[0].save(data_streamdg2) << " bytes" << endl;
@@ -942,7 +940,7 @@ void GOMR1_ObliviousMultiplexer_BFV() {
                         poly_modulus_degree, secret_key, context, numOfTransactions);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << "\nRecipient runnimg time: " << time_diff.count() << "us." << "\n";
+    cout << "\nRecipient running time: " << time_diff.count() << "us." << "\n";
 
     if(checkRes(expected, res))
         cout << "Result is correct!" << endl;
@@ -1046,7 +1044,7 @@ size_t poly_modulus_degree = poly_modulus_degree_glb;
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096};
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
 
     //////////////////////////////////////
@@ -1140,7 +1138,7 @@ size_t poly_modulus_degree = poly_modulus_degree_glb;
 
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << "\nDetector runnimg time: " << time_diff.count() << "us." << "\n";
+    cout << "\nDetector running time: " << time_diff.count() << "us." << "\n";
 
     stringstream data_streamdg, data_streamdg2;
     cout << "Digest size: " << rhs_multi[0].save(data_streamdg) + lhs_multi[0].save(data_streamdg2) << " bytes" << endl;
@@ -1152,7 +1150,7 @@ size_t poly_modulus_degree = poly_modulus_degree_glb;
                         poly_modulus_degree, secret_key, context, numOfTransactions);
     time_end = chrono::high_resolution_clock::now();
     time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-    cout << "\nRecipient runnimg time: " << time_diff.count() << "us." << "\n";
+    cout << "\nRecipient running time: " << time_diff.count() << "us." << "\n";
 
     if (checkRes(expected, res))
         cout << "Result is correct!" << endl;
