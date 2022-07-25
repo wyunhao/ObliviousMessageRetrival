@@ -261,9 +261,9 @@ void genSwitchingKeyMREPacked(vector<Ciphertext>& switchingKey, const SEALContex
                 skInt[i] = 0;
             } else {
                 if (tempindex < params.n - partial_size_glb) {
-                    skInt[i] = uint64_t(regSk.secretSK[j][tempindex] % params.q);
+                    skInt[i] = uint64_t(regSk.secretSK[j][tempindex].ConvertToInt() % params.q);
                 } else {
-                    skInt[i] = uint64_t(regSk.shareSK[j][tempindex - params.n + partial_size_glb] % params.q);
+                    skInt[i] = uint64_t(regSk.shareSK[j][tempindex - params.n + partial_size_glb].ConvertToInt() % params.q);
                 }
             }
         }

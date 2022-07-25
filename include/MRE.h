@@ -15,25 +15,25 @@ using namespace seal;
 typedef mt19937 RNG;
 RNG rng; // keep one global instance (per thread)
 
-typedef vector<vector<uint64_t>> MREsharedSK;
-typedef vector<vector<uint64_t>> MREsecretSK;
+typedef vector<NativeVector> MREsharedSK;
+typedef vector<NativeVector> MREsecretSK;
 
 struct MREpk{
-    vector<vector<uint64_t>> b_prime; // T x ell, double vector
+    vector<NativeVector> b_prime; // T x ell, double vector
     vector<MREsharedSK> shareSK; // T's ell x (ell * T + O(1)) double vectors
 
     MREpk() {}
-    MREpk(vector<vector<uint64_t>>& b_prime, vector<MREsharedSK>& shareSK)
+    MREpk(vector<NativeVector>& b_prime, vector<MREsharedSK>& shareSK)
     : b_prime(b_prime), shareSK(shareSK)
     {}
 };
 
 struct MREgroupPK {
-    vector<uint64_t> A;
-    vector<uint64_t> b;
+    NativeVector A;
+    NativeVector b;
 
     MREgroupPK() {}
-    MREgroupPK(vector<uint64_t>& A, vector<uint64_t>& b)
+    MREgroupPK(NativeVector& A, NativeVector& b)
     : A(A), b(b)
     {}
 };
@@ -69,8 +69,8 @@ vector<MREsk> MREgenerateSK(const PVWParam& param, const int partialSize = 40, c
         MREsecretSK leftSK(param.ell);
         MREsharedSK rightSK(param.ell);
         for (int l = 0; l < param.ell; l++) {
-            leftSK[l].resize(param.n - partialSize);
-            rightSK[l].resize(partialSize);
+            leftSK[l] = NativeVector(param.n - partialSize);
+            rightSK[l] = NativeVector(partialSize);
 
             int j = 0;
             for (; j < param.n - partialSize; j++) {
@@ -89,7 +89,7 @@ vector<MREpk> MREgeneratePartialPK(const PVWParam& param, const vector<MREsk>& g
 
     vector<MREpk> pk(param.m);
     vector<uint64_t> A1(param.n - partialSize), b(param.ell);
-    vector<vector<uint64_t>> b_prime(groupSK.size());
+    vector<NativeVector> b_prime(groupSK.size());
     vector<MREsharedSK> sharedSK(groupSK.size());
 
     rng.seed(crs);
@@ -104,12 +104,12 @@ vector<MREpk> MREgeneratePartialPK(const PVWParam& param, const vector<MREsk>& g
         }
 
         for (int i = 0; i < groupSK.size(); i++) {
-            b_prime[i].resize(param.ell);
+            b_prime[i] = NativeVector(param.ell);
 
             for (int l = 0; l < param.ell; l++) {
                 long temp = 0;
                 for (int j = 0; j < param.n - partialSize; j++) {
-                    temp = (temp + groupSK[i].secretSK[l][j] * A1[j]) % param.q;
+                    temp = (temp + groupSK[i].secretSK[l][j].ConvertToInt() * A1[j]) % param.q;
                     temp = temp < 0 ? temp + param.q : temp;
                 }
                 if (b[l] < temp) {
@@ -138,7 +138,7 @@ MREPublicKey MREgeneratePK(const PVWParam& param, vector<MREpk>& mrePK, const in
     vector<MREgroupPK> groupPK(param.m);
 
     for (int w = 0; w < param.m; w++) {
-        vector<uint64_t> A(param.n), b(param.ell);
+        NativeVector A(param.n), b(param.ell);
         vector<vector<int>> rhs(param.ell * partySize), lhs(param.ell * partySize);
 
         for (int i = 0; i < param.ell * partySize; i++) {
@@ -146,7 +146,7 @@ MREPublicKey MREgeneratePK(const PVWParam& param, vector<MREpk>& mrePK, const in
 
             int party_ind = i / param.ell;
             int ell_ind = i % param.ell;
-            rhs[i][0] = mrePK[w].b_prime[party_ind][ell_ind];
+            rhs[i][0] = mrePK[w].b_prime[party_ind][ell_ind].ConvertToInt();
         }
 
         for (int i = 0; i < param.ell * partySize; i++) {
@@ -156,7 +156,7 @@ MREPublicKey MREgeneratePK(const PVWParam& param, vector<MREpk>& mrePK, const in
                 int party_ind = i / param.ell;
                 int ell_ind = i % param.ell;
 
-                lhs[i][j] = mrePK[w].shareSK[party_ind][ell_ind][j];
+                lhs[i][j] = mrePK[w].shareSK[party_ind][ell_ind][j].ConvertToInt();
             }
         }
 
@@ -178,14 +178,14 @@ MREPublicKey MREgeneratePK(const PVWParam& param, vector<MREpk>& mrePK, const in
     return MREPublicKey(groupPK, mrePK);
 }
 
-bool verifyPK(const PVWParam& param, const MREgroupPK& groupPK, const vector<vector<uint64_t>>& b_prime, const vector<MREsharedSK>& recipientPK,
+bool verifyPK(const PVWParam& param, const MREgroupPK& groupPK, const vector<NativeVector>& b_prime, const vector<MREsharedSK>& recipientPK,
               const int partialSize = 40) {
     for (int r = 0; r < recipientPK.size(); r++) {
         for (int l = 0; l < param.ell; l++) {
             long b_temp = 0;
             for (int i = 0; i < param.n; i++) {
                 if (i >= param.n - partialSize) {
-                    b_temp = (b_temp + groupPK.A[i] * recipientPK[r][l][i - param.n + partialSize]) % param.q;
+                    b_temp = (b_temp + groupPK.A[i].ConvertToInt() * recipientPK[r][l][i - param.n + partialSize].ConvertToInt()) % param.q;
                 }
             }
             if (b_prime[r][l] != b_temp) {

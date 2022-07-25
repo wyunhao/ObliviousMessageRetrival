@@ -90,20 +90,6 @@ void saveGroupClues(const vector<vector<long>>& cluePolynomial, int transaction_
     datafile.close();
 }
 
-void saveMREGroupPK(const MREgroupPK& groupPK, const int transaction_num) {
-    ofstream datafile;
-    datafile.open ("../data/clues/"+to_string(transaction_num)+".txt");
-
-    for(size_t i = 0; i < groupPK.A.size(); i++) {
-        datafile << groupPK.A[i] << "\n";
-    }
-    for(size_t i = 0; i < groupPK.b.size(); i++) {
-        datafile << groupPK.b[i] << "\n";
-    }
-
-    datafile.close();
-}
-
 
 void loadData(vector<vector<uint64_t>>& msgs, const int& start, const int& end, string folder = "payloads", int payloadSize = 306, int partySize = 1){
     msgs.resize((end-start) * partySize);
