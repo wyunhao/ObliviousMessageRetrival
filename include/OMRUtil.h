@@ -500,7 +500,6 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
 
     for(int i = 0; i < numOfTransactions; i++){
         while (true) {
-            cout << i << endl;
             if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
                 check = true;
                 ids = initializeRecipientId(params, party_size_glb - 1, id_size_glb);
@@ -525,7 +524,7 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
                     check = false;
                     break;
                 } else {
-                    cout << "!!! Regenerating clue poly for msg: " << i << endl;
+                    cout << "Mismatch detected, regenerating clue poly for msg: " << i << endl;
                 }
                 check = false;
             } else {
