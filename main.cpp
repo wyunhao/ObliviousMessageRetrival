@@ -33,21 +33,27 @@ int main() {
     cout << "| 22.GOMR1_OM_BFV Single Thread      |" << endl;
     cout << "| 23.GOMR1_OM_BFV Two Threads        |" << endl;
     cout << "| 24.GOMR1_OM_BFV Four Threads       |" << endl;
-    cout << "| 25.GOMR1_FG Single Thread          |" << endl;
-    cout << "| 26.GOMR1_FG Two Threads            |" << endl;
-    cout << "| 27.GOMR1_FG Four Threads           |" << endl;
+    cout << "| 25.GOMR2_OM_BFV Single Thread      |" << endl;
+    cout << "| 26.GOMR2_OM_BFV Two Threads        |" << endl;
+    cout << "| 27.GOMR2_OM_BFV Four Threads       |" << endl;
+    cout << "| 28.GOMR1_FG Single Thread          |" << endl;
+    cout << "| 29.GOMR1_FG Two Threads            |" << endl;
+    cout << "| 30.GOMR1_FG Four Threads           |" << endl;
+    cout << "| 31.GOMR2_FG Single Thread          |" << endl;
+    cout << "| 32.GOMR2_FG Two Threads            |" << endl;
+    cout << "| 33.GOMR2_FG Four Threads           |" << endl;
     cout << "+------------------------------------+" << endl;
 
     int selection = 0;
     bool valid = true;
     do
     {
-        cout << endl << "> Run demos (1 ~ 27) or exit (0): ";
+        cout << endl << "> Run demos (1 ~ 33) or exit (0): ";
         if (!(cin >> selection))
         {
             valid = false;
         }
-        else if (selection < 0 || selection > 27)
+        else if (selection < 0 || selection > 33)
         {
             valid = false;
         }
@@ -57,7 +63,7 @@ int main() {
         }
         if (!valid)
         {
-            cout << "  [Beep~~] valid option: type 0 ~ 27" << endl;
+            cout << "  [Beep~~] valid option: type 0 ~ 33" << endl;
             cin.clear();
             cin.ignore(numeric_limits<streamsize>::max(), '\n');
         }
@@ -185,19 +191,48 @@ int main() {
 
         case 25:
             numcores = 1;
-            GOMR1_FG();
+            GOMR2_ObliviousMultiplexer_BFV();
             break;
 
         case 26:
             numcores = 2;
-            GOMR1_FG();
+            GOMR2_ObliviousMultiplexer_BFV();
             break;
 
         case 27:
             numcores = 4;
+            GOMR2_ObliviousMultiplexer_BFV();
+            break;
+
+        case 28:
+            numcores = 1;
             GOMR1_FG();
             break;
 
+        case 29:
+            numcores = 2;
+            GOMR1_FG();
+            break;
+
+        case 30:
+            numcores = 4;
+            GOMR1_FG();
+            break;
+
+        case 31:
+            numcores = 1;
+            GOMR2_FG();
+            break;
+
+        case 32:
+            numcores = 2;
+            GOMR2_FG();
+            break;
+
+        case 33:
+            numcores = 4;
+            GOMR2_FG();
+            break;
         case 0:
             return 0;
         }

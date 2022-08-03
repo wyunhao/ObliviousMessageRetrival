@@ -118,16 +118,23 @@ class Detector{
 
 vector<vector<uint64_t>> preparinngTransactionsFormal(PVWpk& pk, 
                                                     int numOfTransactions, int pertinentMsgNum, const PVWParam& params, bool formultitest = false){
-    srand (time(NULL));
+    prng_seed_type seed;
+    for (auto &i : seed) {
+        i = random_uint64();
+    }
+
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(rng->create());
+    uniform_int_distribution<uint64_t> dist(0, numOfTransactions - 1);
 
     vector<int> msgs(numOfTransactions);
     vector<vector<uint64_t>> ret;
     vector<int> zeros(params.ell, 0);
 
     for(int i = 0; i < pertinentMsgNum;){
-        auto temp = rand() % numOfTransactions;
+        auto temp = dist(engine);
         while(msgs[temp]){
-            temp = rand() % numOfTransactions;
+            temp = dist(engine);
         }
         msgs[temp] = 1;
         i++;

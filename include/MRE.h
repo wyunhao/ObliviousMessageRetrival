@@ -85,22 +85,22 @@ vector<MREsk> MREgenerateSK(const PVWParam& param, const int partialSize = 40, c
     return mreSK;
 }
 
-vector<MREpk> MREgeneratePartialPK(const PVWParam& param, const vector<MREsk>& groupSK, const int crs, const int partialSize = 40) {
+vector<MREpk> MREgeneratePartialPK(const PVWParam& param, const vector<MREsk>& groupSK, prng_seed_type& seed, const int partialSize = 40) {
+    auto mrerng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(mrerng->create());
+    std::uniform_int_distribution<std::mt19937::result_type> dist(0, 65536);
 
     vector<MREpk> pk(param.m);
     vector<uint64_t> A1(param.n - partialSize), b(param.ell);
     vector<vector<uint64_t>> b_prime(groupSK.size());
     vector<MREsharedSK> sharedSK(groupSK.size());
 
-    rng.seed(crs);
-    std::uniform_int_distribution<std::mt19937::result_type> dist(0, 65536); // distribution in range q
-
     for (int w = 0; w < param.m; w++) {
         for (int i = 0; i < param.n - partialSize; i++) {
-            A1[i] = dist(rng) % param.q;
+            A1[i] = dist(engine) % param.q;
         }
         for (int i = 0; i < param.ell; i++) {
-            b[i] = dist(rng) % param.q;
+            b[i] = dist(engine) % param.q;
         }
 
         for (int i = 0; i < groupSK.size(); i++) {
@@ -131,8 +131,9 @@ vector<MREpk> MREgeneratePartialPK(const PVWParam& param, const vector<MREsk>& g
 }
 
 
-MREPublicKey MREgeneratePK(const PVWParam& param, vector<MREpk>& mrePK, const int crs, const int partySize = 8, const int partialSize = 40) {
-    rng.seed(crs);
+MREPublicKey MREgeneratePK(const PVWParam& param, vector<MREpk>& mrePK, prng_seed_type& seed, const int partySize = 8, const int partialSize = 40) {
+    auto mrerng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(mrerng->create());
     std::uniform_int_distribution<std::mt19937::result_type> dist(0, 65536);
 
     vector<MREgroupPK> groupPK(param.m);
@@ -164,13 +165,13 @@ MREPublicKey MREgeneratePK(const PVWParam& param, vector<MREpk>& mrePK, const in
 
         int i = 0;
         for (; i < param.n - partialSize; i++) {
-            A[i] = dist(rng) % param.q;
+            A[i] = dist(engine) % param.q;
         }
         for (; i < param.n; i++) {
             A[i] = res[i - param.n + partialSize][0];
         }
         for (int i = 0; i < param.ell; i++) {
-            b[i] = dist(rng) % param.q;
+            b[i] = dist(engine) % param.q;
         }
         groupPK[w] = MREgroupPK(A, b);
     }
@@ -198,6 +199,15 @@ bool verifyPK(const PVWParam& param, const MREgroupPK& groupPK, const vector<vec
 }
 
 void MREEncPK(PVWCiphertext& ct, const vector<int>& msg, const MREPublicKey& pk, const PVWParam& param) {
+    prng_seed_type seed;
+    for (auto &i : seed) {
+        i = random_uint64();
+    }
+
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(rng->create());
+    uniform_int_distribution<uint64_t> dist(0, 1);
+
     NativeInteger q = param.q;
     ct.a = NativeVector(param.n);
     ct.b = NativeVector(param.ell);
@@ -206,7 +216,7 @@ void MREEncPK(PVWCiphertext& ct, const vector<int>& msg, const MREPublicKey& pk,
             // cout << "skip " << i << endl;
             continue;
         }
-        if (rand()%2){
+        if (dist(engine)){
             for(int j = 0; j < param.n; j++){
                 ct.a[j].ModAddFastEq(pk.groupPK[i].A[j], q);
             }

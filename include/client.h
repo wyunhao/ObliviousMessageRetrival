@@ -351,7 +351,9 @@ vector<vector<long>> equationSolving(vector<vector<int>>& lhs, vector<vector<int
 
 // Pick random values to satisfy multi-variable equation.
 // For example, given x + y = 10, we might output {2, 8}.
-void assignVariable(vector<vector<long>>& res, vector<int>& lhs, int rhs) {
+void assignVariable(RandomToStandardAdapter& engine, vector<vector<long>>& res, vector<int>& lhs, int rhs) {
+    uniform_int_distribution<uint64_t> dist(0, 65536);
+
     if (res.size() != lhs.size())
         cerr << "Coefficient and variable size not match." << endl;
 
@@ -366,7 +368,7 @@ void assignVariable(vector<vector<long>>& res, vector<int>& lhs, int rhs) {
 
     for (int i = 0; i < lhs.size(); i++) {
         if (lhs[i] != 0 && i != lastIndex) {
-            res[i][0] = rand() % 65537;
+            res[i][0] = dist(engine);
             long temp = (rhs - (lhs[i] * res[i][0])) % 65537;
             temp = temp < 0 ? temp + 65537 : temp;
             rhs = temp;
@@ -397,11 +399,19 @@ void updateEquation(vector<vector<long>>& res, vector<vector<int>>& lhs, vector<
 // TODO: use this to refactor the previous method solveCluePolynomial
 // similar to equationSolving, but assign random values to variable if the equation coefficient matrix is not full rank, i.e. no solution
 vector<vector<long>> equationSolvingRandom(vector<vector<int>>& lhs, vector<vector<int>>& rhs, const int& numToSolve = -1) {
+    prng_seed_type seed;
+    for (auto &i : seed) {
+        i = random_uint64();
+    }
+
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(rng->create());
+
     vector<vector<long>> tryRes = equationSolving(lhs, rhs, -1);
     if (tryRes.empty()) {
         tryRes.resize(lhs[0].size(), vector<long>(1));
         while (!lhs.empty()) {
-            assignVariable(tryRes, lhs[lhs.size() - 1], rhs[rhs.size() - 1][0]);
+            assignVariable(engine, tryRes, lhs[lhs.size() - 1], rhs[rhs.size() - 1][0]);
             lhs.pop_back();
             rhs.pop_back();
             updateEquation(tryRes, lhs, rhs);

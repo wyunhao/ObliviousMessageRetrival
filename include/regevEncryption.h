@@ -1,11 +1,13 @@
 #pragma once
 
+#include "SealUtils.h"
 #include "math/ternaryuniformgenerator.h"
 #include "math/discreteuniformgenerator.h"
 #include "math/discretegaussiangenerator.h"
 #include <iostream>
 using namespace std;
 using namespace lbcrypto;
+using namespace seal;
 
 struct regevParam{
     int n;
@@ -73,10 +75,19 @@ regevPK regevGeneratePublicKey(const regevParam& param, const regevSK& sk){
 }
 
 void regevEncPK(regevCiphertext& ct, const int& msg, const regevPK& pk, const regevParam& param){
+    prng_seed_type seed;
+    for (auto &i : seed) {
+        i = random_uint64();
+    }
+
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(rng->create());
+    uniform_int_distribution<uint64_t> dist(0, 1);
+
     NativeInteger q = param.q;
     ct.a = NativeVector(param.n);
     for(size_t i = 0; i < pk.size(); i++){
-        if (rand()%2){
+        if (dist(engine)){
             for(int j = 0; j < param.n; j++){
                 ct.a[j].ModAddFastEq(pk[i].a[j], q);
             }
@@ -140,7 +151,7 @@ void PVWDec(vector<int>& msg, const PVWCiphertext& ct, const PVWsk& sk, const PV
 
 /////////////////////////////////////////////////////////////////// Below are implementation
 
-PVWsk PVWGenerateSecretKey(const PVWParam& param, const bool print = false){
+PVWsk PVWGenerateSecretKey(const PVWParam& param){
     int n = param.n;
     int q = param.q;
     lbcrypto::DiscreteUniformGeneratorImpl<regevSK> dug;
@@ -148,13 +159,6 @@ PVWsk PVWGenerateSecretKey(const PVWParam& param, const bool print = false){
     PVWsk ret(param.ell);
     for(int i = 0; i < param.ell; i++){
         ret[i] = dug.GenerateVector(n);
-        if (print) {
-            cout << i << ": " << endl;
-            for (int c = 0; c < param.n; c++) {
-                cout << ret[i][c].ConvertToInt() << " " ;
-            }
-            cout << endl;
-        }
     }
     return ret;
 }
@@ -192,11 +196,20 @@ PVWpk PVWGeneratePublicKey(const PVWParam& param, const PVWsk& sk){
 }
 
 void PVWEncPK(PVWCiphertext& ct, const vector<int>& msg, const PVWpk& pk, const PVWParam& param) {
+    prng_seed_type seed;
+    for (auto &i : seed) {
+        i = random_uint64();
+    }
+
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(rng->create());
+    uniform_int_distribution<uint64_t> dist(0, 1);
+
     NativeInteger q = param.q;
     ct.a = NativeVector(param.n);
     ct.b = NativeVector(param.ell);
     for(size_t i = 0; i < pk.size(); i++){
-        if (rand()%2){
+        if (dist(engine)){
             for(int j = 0; j < param.n; j++){
                 ct.a[j].ModAddFastEq(pk[i].a[j], q);
             }
