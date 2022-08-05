@@ -46,7 +46,15 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
     Evaluator evaluator(context);
     Encryptor encryptor(context, BFVpk);
     vector<uint64_t> pod_matrix(degree, 0ULL);
-    srand(time(NULL));
+
+    prng_seed_type seed;
+    for (auto &i : seed) {
+        i = random_uint64();
+    }
+
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(rng->create());
+    uniform_int_distribution<uint64_t> dist(0, degree-1);
 
     if((counter%degree) == 0){ // first msg
         indexIndicator.resize(C);
@@ -64,7 +72,7 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
 
     for(size_t i = 0; i < SIC.size(); i++){
         for(size_t j = 0; j < C; j++){
-            size_t index = rand()%degree;
+            size_t index = dist(engine);
 
             vector<uint64_t> pod_matrix(degree, 0ULL);
             Ciphertext temp;
@@ -136,7 +144,15 @@ void randomizedIndexRetrieval_opt(vector<Ciphertext>& buckets, vector<Ciphertext
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
     Encryptor encryptor(context, BFVpk);
-    srand(time(NULL));
+
+    prng_seed_type seed;
+    for (auto &i : seed) {
+        i = random_uint64();
+    }
+
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(rng->create());
+    uniform_int_distribution<uint64_t> dist(0, num_buckets-1);
 
     if((counter % degree) == 0){ // first msg
         buckets.resize(C_prime);
@@ -157,7 +173,7 @@ void randomizedIndexRetrieval_opt(vector<Ciphertext>& buckets, vector<Ciphertext
         
         Ciphertext temp;
         for(size_t j = 0; j < C; j++){
-            size_t index = rand() % num_buckets;
+            size_t index = dist(engine);
             index += (j * slots_per_bucket * num_buckets); // 2 slots allow 65537^2 total messages
             size_t the_scalar_mtx = index / (degree / num_buckets / slots_per_bucket * num_buckets * slots_per_bucket);
             index %= (degree / num_buckets / slots_per_bucket * num_buckets * slots_per_bucket);
@@ -189,8 +205,11 @@ void randomizedIndexRetrieval_opt(vector<Ciphertext>& buckets, vector<Ciphertext
 
 // generate the random assignment of each message represented as a bipartite grap
 // generate weights for each assignment
-void bipartiteGraphWeightsGeneration(vector<vector<int>>& bipartite_map, vector<vector<int>>& weights, const int& num_of_transactions, const int& num_of_buckets, const int& repetition, const int& seed){
-    srand(seed);
+void bipartiteGraphWeightsGeneration(vector<vector<int>>& bipartite_map, vector<vector<int>>& weights, const int& num_of_transactions, const int& num_of_buckets, const int& repetition, prng_seed_type& seed){
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(rng->create());
+    uniform_int_distribution<uint64_t> dist_bucket(0, num_of_buckets-1), dist_weight(0, 65536);
+
     bipartite_map.clear();
     weights.clear();
     bipartite_map.resize(num_of_transactions);
@@ -200,14 +219,14 @@ void bipartiteGraphWeightsGeneration(vector<vector<int>>& bipartite_map, vector<
         bipartite_map[i].resize(repetition, -1);
         weights[i].resize(repetition, -1);
         for(int j = 0; j < repetition; j++){
-            int temp = rand()%num_of_buckets;
+            int temp = dist_bucket(engine);
             // avoid repeatition
             while(find(bipartite_map[i].begin(), bipartite_map[i].end(), temp) != bipartite_map[i].end()){
-                temp = rand()%num_of_buckets;
+                temp = dist_bucket(engine);
             }
             bipartite_map[i][j] = temp;
             // weight is non-zero
-            weights[i][j] = rand()%65536 + 1;
+            weights[i][j] = dist_weight(engine) + 1;
         }
     }
 }

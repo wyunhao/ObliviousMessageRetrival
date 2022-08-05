@@ -308,6 +308,9 @@ void OMR2(){
     vector<Ciphertext> lhs_multi(numcores), rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
 
+    for (auto &i : seed_glb) {
+        i = random_uint64();
+    }
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions,OMRtwoM,repeatition_glb,seed_glb);
 
     NTL_EXEC_RANGE(numcores, first, last);
@@ -527,6 +530,9 @@ void OMR3(){
     vector<Ciphertext> rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
 
+    for (auto &i : seed_glb) {
+        i = random_uint64();
+    }
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRthreeM, repeatition_glb, seed_glb);
 
     int number_of_ct = repetition_glb * 3 * 512 / (poly_modulus_degree_glb / 512 / 3 * 3 * 512);
