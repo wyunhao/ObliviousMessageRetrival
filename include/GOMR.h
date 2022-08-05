@@ -174,6 +174,10 @@ void GOMR1() {
     vector<Ciphertext> lhs_multi(numcores), rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
 
+    for (auto &i : seed_glb) {
+        i = random_uint64();
+    }
+
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRtwoM, repeatition_glb, seed_glb);
 
     NTL_EXEC_RANGE(numcores, first, last);
@@ -402,6 +406,9 @@ void GOMR2() {
     vector<Ciphertext> rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
 
+    for (auto &i : seed_glb) {
+        i = random_uint64();
+    }
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRthreeM, repeatition_glb, seed_glb);
 
     int number_of_ct = ceil(repetition_glb * 4 * 512 / ((poly_modulus_degree_glb / 512 / 4 * 4 * 512) * 1.0));
@@ -641,6 +648,9 @@ void GOMR1_ObliviousMultiplexer() {
     vector<Ciphertext> lhs_multi(numcores), rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
 
+    for (auto &i : seed_glb) {
+        i = random_uint64();
+    }
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRtwoM, repeatition_glb, seed_glb);
 
     NTL_EXEC_RANGE(numcores, first, last);
@@ -867,6 +877,9 @@ void GOMR2_ObliviousMultiplexer() {
     vector<Ciphertext> rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
 
+    for (auto &i : seed_glb) {
+        i = random_uint64();
+    }
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRthreeM, repeatition_glb, seed_glb);
 
     int number_of_ct = ceil(repetition_glb * 3 * 512 / ((poly_modulus_degree_glb / 512 / 3 * 3 * 512) * 1.0));
@@ -1104,6 +1117,9 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     vector<Ciphertext> lhs_multi(numcores), rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
 
+    for (auto &i : seed_glb) {
+        i = random_uint64();
+    }
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRtwoM, repeatition_glb, seed_glb);
 
     NTL_EXEC_RANGE(numcores, first, last);
@@ -1329,6 +1345,9 @@ void GOMR2_ObliviousMultiplexer_BFV() {
     vector<Ciphertext> rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
 
+    for (auto &i : seed_glb) {
+        i = random_uint64();
+    }
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRthreeM, repeatition_glb, seed_glb);
 
     int number_of_ct = ceil(repetition_glb * 3 * 512 / ((poly_modulus_degree_glb / 512 / 3 * 3 * 512) * 1.0));
@@ -1562,6 +1581,9 @@ void GOMR1_FG() {
     vector<Ciphertext> lhs_multi(numcores), rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
 
+    for (auto &i : seed_glb) {
+        i = random_uint64();
+    }
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRtwoM, repeatition_glb, seed_glb);
 
     NTL_EXEC_RANGE(numcores, first, last);
@@ -1716,7 +1738,7 @@ void GOMR2_FG() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
+    vector<int> steps_next = {0,32,64,128,256,512};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
 
     //////////////////////////////////////
@@ -1776,6 +1798,9 @@ void GOMR2_FG() {
     vector<Ciphertext> rhs_multi(numcores);
     vector<vector<vector<int>>> bipartite_map(numcores);
 
+    for (auto &i : seed_glb) {
+        i = random_uint64();
+    }
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRthreeM, repeatition_glb, seed_glb);
 
     int number_of_ct = ceil(repetition_glb * 3 * 512 / ((poly_modulus_degree_glb / 512 / 3 * 3 * 512) * 1.0));

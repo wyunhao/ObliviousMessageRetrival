@@ -547,7 +547,9 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
 // similar to preparingTransactionsFormal but for fixed group GOMR which requires a MREgroupPK for each message.
 vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices, MREPublicKey& pk, int numOfTransactions,
                            int pertinentMsgNum, const PVWParam& params, prng_seed_type& seed) {
-    srand (time(NULL));
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(rng->create());
+    uniform_int_distribution<uint64_t> dist(0, numOfTransactions - 1);
 
     vector<vector<uint64_t>> ret;
     vector<int> zeros(params.ell, 0);
@@ -555,14 +557,18 @@ vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices,
     cout << "Expected Message Indices: ";
 
     for (int i = 0; i < pertinentMsgNum; i++) {
-        auto temp = rand() % numOfTransactions;
+        auto temp = dist(engine);
         while(find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), temp) != pertinentMsgIndices.end()){
-            temp = rand() % numOfTransactions;
+            temp = dist(engine);
         }
         cout << temp << " ";
         pertinentMsgIndices.push_back(temp);
     }
 
+    prng_seed_type mreseed;
+    for (auto &i : mreseed) {
+        i = random_uint64();
+    }
     cout << endl;
     for(int i = 0; i < numOfTransactions; i++){
         PVWCiphertext tempclue;
@@ -571,10 +577,9 @@ vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices,
             MREEncPK(tempclue, zeros, pk, params);
             ret.push_back(loadDataSingle(i));
         } else {
-            // int temp_crs = rand() % params.q;
             // vector<MREsk> groupSK = MREgenerateSK(params);
-            // vector<MREpk> partialPK = MREgeneratePartialPK(params, groupSK, temp_crs);
-            // vector<MREgroupPK> groupPK = MREgeneratePK(params, partialPK, temp_crs);
+            // vector<MREpk> partialPK = MREgeneratePartialPK(params, groupSK, mreseed);
+            // MREPublicKey groupPK = MREgeneratePK(params, partialPK, mreseed);
             // MREEncPK(tempclue, zeros, groupPK, params);
 
             auto sk2 = PVWGenerateSecretKey(params);
