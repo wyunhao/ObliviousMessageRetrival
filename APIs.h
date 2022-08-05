@@ -4,6 +4,7 @@
 #include "include/retrieval.h"
 #include "include/client.h"
 #include "include/LoadAndSaveUtils.h"
+#include "include/scheme.h"
 #include <NTL/BasicThreadPool.h>
 #include <NTL/ZZ.h>
 #include <thread>
@@ -115,52 +116,6 @@ class Detector{
 };
 
 //////////////////////////////////////////////////////
-
-vector<vector<uint64_t>> preparinngTransactionsFormal(PVWpk& pk, 
-                                                    int numOfTransactions, int pertinentMsgNum, const PVWParam& params, bool formultitest = false){
-    prng_seed_type seed;
-    for (auto &i : seed) {
-        i = random_uint64();
-    }
-
-    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
-    RandomToStandardAdapter engine(rng->create());
-    uniform_int_distribution<uint64_t> dist(0, numOfTransactions - 1);
-
-    vector<int> msgs(numOfTransactions);
-    vector<vector<uint64_t>> ret;
-    vector<int> zeros(params.ell, 0);
-
-    for(int i = 0; i < pertinentMsgNum;){
-        auto temp = dist(engine);
-        while(msgs[temp]){
-            temp = dist(engine);
-        }
-        msgs[temp] = 1;
-        i++;
-    }
-
-    cout << "Expected Message Indices: ";
-
-    for(int i = 0; i < numOfTransactions; i++){
-        PVWCiphertext tempclue;
-        if(msgs[i]){
-            cout << i << " ";
-            PVWEncPK(tempclue, zeros, pk, params);
-            ret.push_back(loadDataSingle(i));
-            expectedIndices.push_back(uint64_t(i));
-        }
-        else
-        {
-            auto sk2 = PVWGenerateSecretKey(params);
-            PVWEncSK(tempclue, zeros, sk2, params);
-        }
-
-        saveClues(tempclue, i);
-    }
-    cout << endl;
-    return ret;
-}
 
 // to check whether the result is as expected
 bool checkRes(vector<vector<uint64_t>> expected, vector<vector<long>> res){
@@ -325,9 +280,8 @@ void Recipient::GeneratePublicKey(const PublicParams& param){
     ////////////////////////////////////////////////////////////////////////////
 
     this->detectKey.SwitchingKey.resize(param.ClueParam.ell);
-    genSwitchingKeyPVWPacked(this->detectKey.SwitchingKey, param.DetectionParam, 
-                                        param.degree, this->detectKey.PK, 
-                                                sk.DetectionSK, sk.ClueSK, param.ClueParam);
+    omr::generateDetectionKey(this->detectKey.SwitchingKey, param.DetectionParam, param.degree, this->detectKey.PK, 
+                              sk.DetectionSK, sk.ClueSK, param.ClueParam);
 }
 
 void Recipient::StreamDetectionKeySet(const PublicParams& param, vector<stringstream>& stream){
@@ -375,7 +329,7 @@ void Recipient::StreamDetectionKeySet(const PublicParams& param, vector<stringst
     seal::Serializable<GaloisKeys> RotKey2 = keygen_last.create_galois_keys(steps);
     ////////////////////////////////////////////////////////////////////////////
 
-    auto SwitchingKey = genSwitchingKeyPVWPacked(param.DetectionParam, param.degree, this->detectKey.PK, 
+    auto SwitchingKey = omr::generateDetectionKey(param.DetectionParam, param.degree, this->detectKey.PK, 
                                                 sk.DetectionSK, sk.ClueSK, param.ClueParam);
 
     stream.resize(SwitchingKey.size() + 5);

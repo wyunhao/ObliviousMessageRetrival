@@ -7,6 +7,7 @@
 #include "LoadAndSaveUtils.h"
 #include "OMRUtil.h"
 #include "global.h"
+#include "scheme.h"
 #include <NTL/BasicThreadPool.h>
 #include <NTL/ZZ.h>
 #include <thread>
@@ -14,32 +15,36 @@
 using namespace seal;
 
 
-vector<vector<uint64_t>> preparingTransactionsFormal(vector<int>& pertinentMsgIndices, PVWpk& pk, int numOfTransactions, int pertinentMsgNum,
-                                                      const PVWParam& params, int partySize = 1) {
-    prng_seed_type seed;
-    for (auto &i : seed) {
-        i = random_uint64();
-    }
-
+void choosePertinentMsg(int numOfTransactions, int pertinentMsgNum, vector<int>& pertinentMsgIndices, prng_seed_type& seed) {
     auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
     RandomToStandardAdapter engine(rng->create());
     uniform_int_distribution<uint64_t> dist(0, numOfTransactions - 1);
 
-    vector<int> msgs(numOfTransactions);
+    for (int i = 0; i < pertinentMsgNum; i++) {
+        auto temp = dist(engine);
+        while(find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), temp) != pertinentMsgIndices.end()){
+            temp = dist(engine);
+        }
+        pertinentMsgIndices.push_back(temp);
+    }
+    sort(pertinentMsgIndices.begin(), pertinentMsgIndices.end());
+
+    cout << "Expected Message Indices: " << pertinentMsgIndices << endl;
+}
+
+
+vector<vector<uint64_t>> preparingTransactionsFormal(vector<int>& pertinentMsgIndices, PVWpk& pk, int numOfTransactions, int pertinentMsgNum,
+                                                      const PVWParam& params, int partySize = 1) {
+
+
     vector<vector<uint64_t>> ret;
     vector<int> zeros(params.ell, 0);
 
-    for(int i = 0; i < pertinentMsgNum;){
-        auto temp = dist(engine);
-        while(msgs[temp]){
-            temp = dist(engine);
-        }
-        msgs[temp] = 1;
-        pertinentMsgIndices.push_back(temp);
-        i++;
+    prng_seed_type seed;
+    for (auto &i : seed) {
+        i = random_uint64();
     }
-
-    cout << "Expected Message Indices: ";
+    choosePertinentMsg(numOfTransactions, pertinentMsgNum, pertinentMsgIndices, seed);
 
     for(int i = 0; i < numOfTransactions; i++){
         PVWCiphertext tempclue;
@@ -53,8 +58,7 @@ vector<vector<uint64_t>> preparingTransactionsFormal(vector<int>& pertinentMsgIn
         }
 
         // w.l.o.g assume the index of recipient within party is |partySize - 1|, i.e., the last in the group
-        if(msgs[i]){
-            cout << i << " ";
+        if(find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
             PVWEncPK(tempclue, zeros, pk, params);
             ret.push_back(loadDataSingle(i));
             expectedIndices.push_back(uint64_t(i));
@@ -310,7 +314,7 @@ void OMDlevelspecificDetectKeySize(){
     public_key.load(context, streamPK);
     relin_keys.load(context, streamRLK);
     gal_keys.load(context, streamRTK); 
-	vector<seal::Serializable<Ciphertext>>  switchingKeypacked = genSwitchingKeyPVWPacked(context, poly_modulus_degree, public_key, secret_key, sk, params);
+	vector<Ciphertext> switchingKeypacked = omr::generateDetectionKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
 	stringstream data_stream;
     for(size_t i = 0; i < switchingKeypacked.size(); i++){
         reskeysize += switchingKeypacked[i].save(data_stream);
@@ -415,7 +419,7 @@ void levelspecificDetectKeySize(){
     public_key.load(context, streamPK);
     relin_keys.load(context, streamRLK);
     gal_keys.load(context, streamRTK); 
-	vector<seal::Serializable<Ciphertext>>  switchingKeypacked = genSwitchingKeyPVWPacked(context, poly_modulus_degree, public_key, secret_key, sk, params);
+	vector<Ciphertext>  switchingKeypacked = omr::generateDetectionKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
 	stringstream data_stream;
     for(size_t i = 0; i < switchingKeypacked.size(); i++){
         reskeysize += switchingKeypacked[i].save(data_stream);
@@ -441,38 +445,6 @@ vector<vector<int>> initializeRecipientId(const PVWParam& params, int partySize,
     }
 
     return ids;
-}
-
-// Read in the a/b[i] part as a 1 x partySize RHS vector for Oblivious Multiplexer polynomial.
-void prepareClueRhs(vector<vector<int>>& rhs, const vector<PVWCiphertext> clues, int index, bool prepare = false) {
-    for (int i = 0; i < rhs.size(); i++) {
-        if (index >= clues[i].a.GetLength()) {
-            if (prepare) {
-                int temp = clues[i].b[index - clues[i].a.GetLength()].ConvertToInt() - 16384;
-                rhs[i][0] = temp < 0 ? temp + 65537 : temp % 65537;
-            } else {
-                rhs[i][0] = clues[i].b[index - clues[i].a.GetLength()].ConvertToInt();
-            }
-        } else {
-            rhs[i][0] = clues[i].a[index].ConvertToInt();
-        }
-    }
-}
-
-// solve the equation system with rhs to be the clues, and lhs to be the ids via equationSolving
-// for non-full rank matrices, rand values are assigned to variables.
-vector<vector<long>> solveCluePolynomial(const PVWParam& params, size_t counter, vector<vector<int>> ids, int index, bool prepare = false,
-                                         int partySize = party_size_glb, int idSize = id_size_glb) {
-    vector<vector<int>> lhs = ids;
-    vector<vector<int>> rhs(partySize, vector<int>(1, -1));
-    vector<vector<long>> tryRes;
-    vector<PVWCiphertext> clues;
-
-    loadClues(clues, counter * partySize, counter * partySize + partySize, params);
-    prepareClueRhs(rhs, clues, index, prepare);
-
-    tryRes = equationSolvingRandom(lhs, rhs, -1);
-    return tryRes;
 }
 
 
@@ -503,8 +475,10 @@ bool verify(const PVWParam& params, const vector<int>& targetId, int index, bool
 
 // similar to preparingTransactionsFormal but for gOMR with Oblivious Multiplexer.
 void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk& pk, int numOfTransactions,int pertinentMsgNum,
-                                  const PVWParam& params, const vector<int>& targetId, bool prepare = false, int clueLength = 454) {
+                                  const PVWParam& params, const vector<int>& targetId, bool prepare = false, int clueLength = 454,
+                                  int partySize = party_size_glb) {
     vector<vector<int>> ids;
+    vector<PVWCiphertext> clues;
     bool check = false;
 
     for(int i = 0; i < numOfTransactions; i++){
@@ -519,23 +493,17 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
 
             // if i is pertinent for recipient r, then its clue is already generated via given sk, and will be in the same equation
             // i.e., when multiplied the polynomial matrix with the recipient r's ID, detector will get clue i.
-            vector<vector<long>> cluePolynomial(clueLength, vector<long>(id_size_glb));
-            for (int a = 0; a < clueLength; a++) {
-                vector<vector<long>> temp = solveCluePolynomial(params, i, ids, a, prepare);
-                for(int j = 0; j < id_size_glb; j++){
-                    cluePolynomial[a][j] = temp[j][0];
-                }
-            }
+            loadClues(clues, i * partySize, i * partySize + partySize, params);
+            vector<vector<long>> cluePolynomial = agomr::generateClue(params, clues, ids, prepare);
             saveGroupClues(cluePolynomial, i);
 
             if (check) {
+                check = false;
                 if (verify(params, targetId, i, prepare)) {
-                    check = false;
                     break;
                 } else {
                     cout << "Mismatch detected, regenerating clue poly for msg: " << i << endl;
                 }
-                check = false;
             } else {
                 break;
             }
@@ -545,25 +513,13 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
 
 
 // similar to preparingTransactionsFormal but for fixed group GOMR which requires a MREgroupPK for each message.
-vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices, MREPublicKey& pk, int numOfTransactions,
+vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices, fgomr::FixedGroupPublicKey& pk, int numOfTransactions,
                            int pertinentMsgNum, const PVWParam& params, prng_seed_type& seed) {
-    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
-    RandomToStandardAdapter engine(rng->create());
-    uniform_int_distribution<uint64_t> dist(0, numOfTransactions - 1);
 
     vector<vector<uint64_t>> ret;
     vector<int> zeros(params.ell, 0);
 
-    cout << "Expected Message Indices: ";
-
-    for (int i = 0; i < pertinentMsgNum; i++) {
-        auto temp = dist(engine);
-        while(find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), temp) != pertinentMsgIndices.end()){
-            temp = dist(engine);
-        }
-        cout << temp << " ";
-        pertinentMsgIndices.push_back(temp);
-    }
+    choosePertinentMsg(numOfTransactions, pertinentMsgNum, pertinentMsgIndices, seed);
 
     prng_seed_type mreseed;
     for (auto &i : mreseed) {
@@ -574,7 +530,7 @@ vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices,
         PVWCiphertext tempclue;
 
         if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
-            MREEncPK(tempclue, zeros, pk, params);
+            tempclue = fgomr::genClue(params, zeros, pk);
             ret.push_back(loadDataSingle(i));
         } else {
             // vector<MREsk> groupSK = MREgenerateSK(params);

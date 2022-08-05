@@ -134,7 +134,7 @@ void loadClues(vector<PVWCiphertext>& clues, const int& start, const int& end, c
 
 // similar to loadClues but under Oblivious Multiplexer, load the clue polynomial coefficient matrix, and compute the clues based on target ID
 void loadObliviousMultiplexerClues(vector<int> pertinent_msgs, vector<PVWCiphertext>& clues, const vector<int>& targetId, const int& start,
-                                   const int& end, const PVWParam& param, int clueLength = 454) {
+                                const int& end, const PVWParam& param, int clueLength = 454) {
     clues.resize(end-start);
 
     for (int i = start; i < end; i++) {

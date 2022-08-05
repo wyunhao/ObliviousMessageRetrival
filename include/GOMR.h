@@ -69,10 +69,8 @@ void GOMR1() {
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> switchingKey;
+    vector<Ciphertext> switchingKey = omr::generateDetectionKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
     Ciphertext packedSIC;
-    switchingKey.resize(params.ell);
-    genSwitchingKeyPVWPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, sk, params);
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
@@ -297,10 +295,8 @@ void GOMR2() {
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> switchingKey;
+    vector<Ciphertext> switchingKey = omr::generateDetectionKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
     Ciphertext packedSIC;
-    switchingKey.resize(params.ell);
-    genSwitchingKeyPVWPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, sk, params);
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
@@ -550,10 +546,8 @@ void GOMR1_ObliviousMultiplexer() {
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> switchingKey;
+    vector<Ciphertext> switchingKey = omr::generateDetectionKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
     Ciphertext packedSIC;
-    switchingKey.resize(params.ell);
-    genSwitchingKeyPVWPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, sk, params);
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
@@ -776,10 +770,8 @@ void GOMR2_ObliviousMultiplexer() {
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> switchingKey;
+    vector<Ciphertext> switchingKey = omr::generateDetectionKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
     Ciphertext packedSIC;
-    switchingKey.resize(params.ell);
-    genSwitchingKeyPVWPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, sk, params);
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
@@ -1016,10 +1008,8 @@ void GOMR1_ObliviousMultiplexer_BFV() {
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> switchingKey;
+    vector<Ciphertext> switchingKey = agomr::generateDetectionKey(targetId, context, poly_modulus_degree, public_key, secret_key, sk, params);
     Ciphertext packedSIC;
-    switchingKey.resize(params.ell + 2); // encrypt the id (one repeated 450 times, one single time) as the last two ciphertexts
-    genSwitchingKeyPVWPackedWithId(switchingKey, targetId, context, poly_modulus_degree, public_key, secret_key, sk, params);
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
@@ -1243,10 +1233,8 @@ void GOMR2_ObliviousMultiplexer_BFV() {
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> switchingKey;
+    vector<Ciphertext> switchingKey = agomr::generateDetectionKey(targetId, context, poly_modulus_degree, public_key, secret_key, sk, params);
     Ciphertext packedSIC;
-    switchingKey.resize(params.ell + 2); // encrypt the id (one repeated 450 times, one single time) as the last two ciphertexts
-    genSwitchingKeyPVWPackedWithId(switchingKey, targetId, context, poly_modulus_degree, public_key, secret_key, sk, params);
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
@@ -1445,9 +1433,9 @@ void GOMR1_FG() {
     }
 
     auto params = PVWParam(450 + partial_size_glb, 65537, 1.3, 16000, 4);
-    vector<MREsk> groupSK = MREgenerateSK(params);
-    vector<MREpk> partialPK = MREgeneratePartialPK(params, groupSK, mreseed);
-    MREPublicKey groupPK = MREgeneratePK(params, partialPK, mreseed);
+    vector<fgomr::FixedGroupSecretKey> groupSK = fgomr::secretKeyGen(params);
+    fgomr::FixedGroupSharedKey partialPK = fgomr::groupKeyGenAux(params, groupSK, mreseed);
+    fgomr::FixedGroupPublicKey groupPK = fgomr::keyGen(params, partialPK, mreseed);
     cout << "Finishing generating pk for targeted recipient group\n";
 
     // step 2. prepare transactions
@@ -1487,11 +1475,9 @@ void GOMR1_FG() {
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> switchingKey;
-    Ciphertext packedSIC;
-    switchingKey.resize(params.ell);
     // w.l.o.g, use the first member in the group to test, ideally, any one should be able to detect same pertinent messages
-    genSwitchingKeyMREPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, groupSK[4], params);
+    fgomr::FixedGroupDetectionKey switchingKey = fgomr::generateDetectionKey(params, context, poly_modulus_degree, public_key, secret_key, groupSK[4]);
+    Ciphertext packedSIC;
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
@@ -1658,9 +1644,9 @@ void GOMR2_FG() {
     }
 
     auto params = PVWParam(450 + partial_size_glb, 65537, 1.3, 16000, 4);
-    vector<MREsk> groupSK = MREgenerateSK(params);
-    vector<MREpk> partialPK = MREgeneratePartialPK(params, groupSK, mreseed);
-    MREPublicKey groupPK = MREgeneratePK(params, partialPK, mreseed);
+    vector<fgomr::FixedGroupSecretKey> groupSK = fgomr::secretKeyGen(params);
+    fgomr::FixedGroupSharedKey partialPK = fgomr::groupKeyGenAux(params, groupSK, mreseed);
+    fgomr::FixedGroupPublicKey groupPK = fgomr::keyGen(params, partialPK, mreseed);
     cout << "Finishing generating pk for targeted recipient group\n";
 
     // step 2. prepare transactions
@@ -1700,11 +1686,9 @@ void GOMR2_FG() {
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> switchingKey;
-    Ciphertext packedSIC;
-    switchingKey.resize(params.ell);
     // w.l.o.g, use the first member in the group to test, ideally, any one should be able to detect same pertinent messages
-    genSwitchingKeyMREPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, groupSK[4], params);
+    fgomr::FixedGroupDetectionKey switchingKey = fgomr::generateDetectionKey(params, context, poly_modulus_degree, public_key, secret_key, groupSK[4]);
+    Ciphertext packedSIC;
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);

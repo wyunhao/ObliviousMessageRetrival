@@ -59,11 +59,8 @@ void OMD1p(){
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> switchingKey;
+    vector<Ciphertext> switchingKey = omr::generateDetectionKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
     Ciphertext packedSIC;
-    switchingKey.resize(params.ell);
-    // Generated BFV ciphertexts encrypting PVW secret keys
-    genSwitchingKeyPVWPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, sk, params);
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
@@ -214,11 +211,8 @@ void OMR2(){
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-
-    vector<Ciphertext> switchingKey;
+    vector<Ciphertext> switchingKey = omr::generateDetectionKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
     Ciphertext packedSIC;
-    switchingKey.resize(params.ell);
-    genSwitchingKeyPVWPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, sk, params);
     
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
@@ -432,10 +426,8 @@ void OMR3(){
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    vector<Ciphertext> switchingKey;
+    vector<Ciphertext> switchingKey = omr::generateDetectionKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
     Ciphertext packedSIC;
-    switchingKey.resize(params.ell);
-    genSwitchingKeyPVWPacked(switchingKey, context, poly_modulus_degree, public_key, secret_key, sk, params);
     
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
     vector<vector<vector<uint64_t>>> payload_multicore(numcores);
