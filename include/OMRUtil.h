@@ -7,7 +7,7 @@
 #include "LoadAndSaveUtils.h"
 #include "OMRUtil.h"
 #include "global.h"
-#include "scheme.h"
+#include "Scheme.h"
 #include <NTL/BasicThreadPool.h>
 #include <NTL/ZZ.h>
 #include <thread>
@@ -482,6 +482,7 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
     bool check = false;
 
     for(int i = 0; i < numOfTransactions; i++){
+        // cout << i << " " << chrono::high_resolution_clock::now() << endl;
         while (true) {
             if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
                 check = true;

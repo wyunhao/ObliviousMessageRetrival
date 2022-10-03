@@ -21,8 +21,13 @@ void prepareClueRhs(vector<vector<int>>& rhs, const vector<PVWCiphertext> clues,
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////// OMR schemes ////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////
 
-
+/**
+ * @brief Oblivious Message Retrival
+ */
 namespace omr
 {
     vector<Ciphertext> generateDetectionKey(const SEALContext& context, const size_t& degree,
@@ -56,7 +61,9 @@ namespace omr
 }
 
 
-
+/**
+ * @brief Ad-hoc Group Oblivious Message Retrival
+ */
 namespace agomr
 {
     typedef vector<vector<long>> AdhocGroupClue;
@@ -114,9 +121,10 @@ namespace agomr
         AdhocGroupClue cluePolynomial(clueLength, vector<long>(id_size_glb));
         for (int a = 0; a < clueLength; a++) {
             vector<vector<int>> rhs(ids.size(), vector<int>(1, -1));
+            vector<vector<int>> lhs = ids;
             prepareClueRhs(rhs, clues, a, prepare);
 
-            temp = equationSolvingRandom(ids, rhs, -1);
+            temp = equationSolvingRandom(lhs, rhs, -1);
 
             for(int j = 0; j < id_size_glb; j++){
                 cluePolynomial[a][j] = temp[j][0];
@@ -128,7 +136,9 @@ namespace agomr
 }
 
 
-
+/**
+ * @brief Fixed Group Oblivious Message Retrival
+ */
 namespace fgomr
 {
     typedef mre::MREPublicKey FixedGroupPublicKey;
@@ -186,6 +196,9 @@ namespace fgomr
     }
 
     PVWCiphertext genClue(const PVWParam& param, const vector<int>& msg, const FixedGroupPublicKey& pk) {
+        chrono::high_resolution_clock::time_point time_start, time_end;
+        chrono::microseconds time_diff;
+        time_start = chrono::high_resolution_clock::now();
         PVWCiphertext ct;
         prng_seed_type seed;
         for (auto &i : seed) {
@@ -216,9 +229,9 @@ namespace fgomr
             msg[j]? ct.b[j].ModAddFastEq(3*q/4, q) : ct.b[j].ModAddFastEq(q/4, q);
         }
 
+        time_end = chrono::high_resolution_clock::now();
+        time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+        cout << "\nClue generation for one message: " << time_diff.count() << "us." << "\n";
         return ct;
     }
-
-
-
 }

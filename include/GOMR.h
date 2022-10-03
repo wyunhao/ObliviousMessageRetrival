@@ -1268,7 +1268,7 @@ void GOMR2_ObliviousMultiplexer_BFV() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
+    vector<int> steps_next = {0,32,64,128,256,512};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;
@@ -1722,7 +1722,7 @@ void GOMR2_FG() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512};
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
 
     //////////////////////////////////////

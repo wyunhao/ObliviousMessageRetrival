@@ -12,7 +12,9 @@
 
 using namespace seal;
 
-
+/**
+ * @brief Multi-Recipient Encryption
+ */
 namespace mre {
 
     typedef vector<NativeVector> MREsharedSK;

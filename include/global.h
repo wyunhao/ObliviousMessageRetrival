@@ -3,8 +3,8 @@
 using namespace seal;
 
 int numcores = 4;
-int OMRtwoM = 5;
-int OMRthreeM = 5;
+int OMRtwoM = 6;
+int OMRthreeM = 6;
 int mod_switch_counter = 0; 
 GaloisKeys gal_keys_next; 
 GaloisKeys gal_keys_last;
