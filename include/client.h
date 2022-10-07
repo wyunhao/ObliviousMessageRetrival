@@ -8,18 +8,18 @@ using namespace seal;
 #define PROFILE
 
 // consider index = 010100, partySize = 3, pv_value = 1, the final output would be 110
-// as each log2(partySize + 1) - bits will be mapped back to a single bit {1,0}
-// if any log2(partySize + 1) - bits pattern does not match the pv_value, collision detected
+// as each ceil(log2(partySize)) - bits will be mapped back to a single bit {1,0}
+// if any ceil(log2(partySize)) - bits pattern does not match the pv_value, collision detected
 int extractIndexWithoutCollision(uint64_t index, int partySize, int pv_value) {
     int res = 0, counter = 0;
 
     while (index) {
-        if (index & partySize) {
+        if (index & (int) (ceil(log2(partySize)) - 1)) {
             res += 1 << counter;
-            if ((index & partySize) != pv_value)
+            if ((index & (int) (ceil(log2(partySize)) - 1)) != pv_value)
                 return -1;
         }
-        index = index >> (int) (log2(partySize + 1));
+        index = index >> (int) (ceil(log2(partySize)));
         counter++;
     }
     return res;
@@ -64,22 +64,22 @@ void decodeIndices(map<int, pair<int, int>>& pertinentIndices, const Ciphertext&
     decryptor.decrypt(indexPack, plain_result);
     batch_encoder.decode(plain_result, indexPackint);
     int counter = 0;
-    int backcounter = (int) (log2(65537) / log2(partySize + 1));
+    int backcounter = (int) (log2(65537) / ceil(log2(partySize)));
     int idx = 0;
     for(int i = 0; i < num_of_transactions;){
         if(!indexPackint[idx])
         {
             idx += 1;
             i += backcounter;
-            backcounter = (int) (log2(65537) / log2(partySize + 1));
+            backcounter = (int) (log2(65537) / ceil(log2(partySize)));
             continue;
         }
-        if((indexPackint[idx] & partySize) > 0) // check if that slot is not zero
+        if((indexPackint[idx] & (int) (ceil(log2(partySize)) - 1)) > 0) // check if that slot is not zero
         {
             pair<int, int> temp(counter++, indexPackint[idx]);
             pertinentIndices.insert(pair<int, pair<int, int>>(i, temp));
         }
-        indexPackint[idx] >>= (int) log2(partySize + 1);
+        indexPackint[idx] >>= (int) ceil(log2(partySize));
         backcounter -= 1;
         i++;
     }

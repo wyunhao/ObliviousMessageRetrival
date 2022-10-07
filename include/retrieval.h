@@ -6,7 +6,7 @@
 void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Ciphertext>& SIC, const SEALContext& context, 
                                     const size_t& degree, const size_t& start, int partySize = 1){ 
 
-    int packSize = (int) (log2(65537) / log2(partySize + 1)); // number of parties one slot can pack
+    int packSize = (int) (log2(65537) / ceil(log2(partySize))); // number of parties one slot can pack
 
     BatchEncoder batch_encoder(context);
     Evaluator evaluator(context);
@@ -19,7 +19,7 @@ void deterministicIndexRetrieval(Ciphertext& indexIndicator, const vector<Cipher
     for(size_t i = 0; i < SIC.size(); i++){
         size_t idx = (i+start) / packSize;
         size_t shift = (i+start) % packSize;
-        pod_matrix[idx] = (1 << ((int) log2(partySize + 1) * shift));
+        pod_matrix[idx] = (1 << ((int) ceil(log2(partySize)) * shift));
         Plaintext plain_matrix;
         batch_encoder.encode(pod_matrix, plain_matrix);
         evaluator.transform_to_ntt_inplace(plain_matrix, SIC[i].parms_id());
@@ -117,12 +117,12 @@ void randomizedIndexRetrieval(vector<vector<Ciphertext>>& indexIndicator, vector
 
 // consider partySize = 3, index = 6 = 110 in binary representation
 // the encoded output would be 010100, as each single bit in the original representation
-// will be expanded into log2(partySize + 1) - bits
+// will be expanded into ceil(log2(partySize)) - bits
 size_t encodeIndexWithPartySize(size_t index, int partySize)
 {
     size_t res = 0;
     int counter = 0;
-    int shift = log2(partySize + 1); // to fit in partySize
+    int shift = ceil(log2(partySize)); // to fit in partySize
 
     while (index) {
         res += (index & 1) << (shift * counter);
