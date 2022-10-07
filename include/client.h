@@ -14,12 +14,12 @@ int extractIndexWithoutCollision(uint64_t index, int partySize, int pv_value) {
     int res = 0, counter = 0;
 
     while (index) {
-        if (index & (int) (ceil(log2(partySize)) - 1)) {
+        if (index & max(1, (int) (ceil(log2(partySize)) - 1))) {
             res += 1 << counter;
-            if ((index & (int) (ceil(log2(partySize)) - 1)) != pv_value)
+            if ((index & (int) max(1, (int) (ceil(log2(partySize)) - 1))) != pv_value)
                 return -1;
         }
-        index = index >> (int) (ceil(log2(partySize)));
+        index = index >> max(1, (int) (ceil(log2(partySize))));
         counter++;
     }
     return res;
@@ -64,22 +64,22 @@ void decodeIndices(map<int, pair<int, int>>& pertinentIndices, const Ciphertext&
     decryptor.decrypt(indexPack, plain_result);
     batch_encoder.decode(plain_result, indexPackint);
     int counter = 0;
-    int backcounter = (int) (log2(65537) / ceil(log2(partySize)));
+    int backcounter = (int) (log2(65537) / max(1, (int) (ceil(log2(partySize)))));
     int idx = 0;
     for(int i = 0; i < num_of_transactions;){
         if(!indexPackint[idx])
         {
             idx += 1;
             i += backcounter;
-            backcounter = (int) (log2(65537) / ceil(log2(partySize)));
+            backcounter = (int) (log2(65537) / max(1, (int) (ceil(log2(partySize)))));
             continue;
         }
-        if((indexPackint[idx] & (int) (ceil(log2(partySize)) - 1)) > 0) // check if that slot is not zero
+        if((indexPackint[idx] & max(1, (int) (ceil(log2(partySize)) - 1))) > 0) // check if that slot is not zero
         {
             pair<int, int> temp(counter++, indexPackint[idx]);
             pertinentIndices.insert(pair<int, pair<int, int>>(i, temp));
         }
-        indexPackint[idx] >>= (int) ceil(log2(partySize));
+        indexPackint[idx] >>= max(1, (int) (ceil(log2(partySize))));
         backcounter -= 1;
         i++;
     }
