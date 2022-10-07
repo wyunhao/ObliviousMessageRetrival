@@ -6,6 +6,54 @@
 #include "MRE.h"
 using namespace std;
 
+vector<vector<int>> generateExponentialExtendedId(const PVWParam& params, vector<vector<int>> ids, int partySize = party_size_glb) {
+    vector<vector<int>> extended_ids(ids.size());
+    for (int i = 0; i < ids.size(); i++) {
+        extended_ids[i].resize(ids[i].size() * partySize);
+        for (int j = 0; j < extended_ids[i].size(); j++) {
+            extended_ids[i][j] = power(ids[i][j / partySize], j % partySize + 1, params.q);
+        }
+    }
+
+    return extended_ids;
+}
+
+vector<vector<int>> generateRandomMatrixWithSeed(const PVWParam& params, prng_seed_type seed, int row, int col) {
+    vector<vector<int>> random_matrix(row, vector<int>(col));
+
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(rng->create());
+    uniform_int_distribution<int> dist(0, params.q - 1);
+
+    for (int i = 0; i < random_matrix.size(); i++) {
+        for (int j = 0; j < random_matrix[0].size(); j++) {
+            random_matrix[i][j] = dist(engine);
+        }
+    }
+
+    return random_matrix;
+}
+
+vector<vector<int>> compressId(const PVWParam& params, prng_seed_type seed, vector<vector<int>> ids) {
+    vector<vector<int>> compressed_ids(ids.size(), vector<int>(party_size_glb));
+    vector<vector<int>> random_matrix = generateRandomMatrixWithSeed(params, seed, ids[0].size(), party_size_glb);
+
+    for (int i = 0; i < compressed_ids.size(); i++) {
+        for (int j = 0; j < compressed_ids[0].size(); j++) {
+            compressed_ids[i][j] = 0;
+            for (int k = 0; k < random_matrix.size(); k++) {
+                compressed_ids[i][j] += ids[i][k] * random_matrix[k][j];
+                compressed_ids[i][j]  %= params.q;
+                while(compressed_ids[i][j] < 0) {
+                    compressed_ids[i][j] += params.q;
+                }
+            }
+        }
+    }
+
+    return compressed_ids;
+}
+
 void createDatabase(int num_of_transactions = 524288, int payloadSize = 306){
     for(int i = 0; i < num_of_transactions; i++){
         ofstream datafile;
@@ -77,7 +125,7 @@ void saveClues(const PVWCiphertext& clue, int transaction_num){
     datafile.close();
 }
 
-void saveGroupClues(const vector<vector<long>>& cluePolynomial, int transaction_num){
+void saveGroupClues(const vector<vector<long>>& cluePolynomial, prng_seed_type seed, int transaction_num){
     ofstream datafile;
     datafile.open ("../data/cluePoly/"+to_string(transaction_num)+".txt");
 
@@ -87,6 +135,9 @@ void saveGroupClues(const vector<vector<long>>& cluePolynomial, int transaction_
         }
     }
 
+    for (auto &i : seed) {
+        datafile << i << "\n";
+    }
     datafile.close();
 }
 
@@ -138,8 +189,20 @@ void loadObliviousMultiplexerClues(vector<int> pertinent_msgs, vector<PVWCiphert
     clues.resize(end-start);
 
     for (int i = start; i < end; i++) {
-        vector<uint64_t> polyFlat = loadDataSingle(i, "cluePoly", clueLength * id_size_glb);
-        vector<vector<long>> cluePolynomial(clueLength, vector<long>(id_size_glb));
+        prng_seed_type seed;
+        vector<uint64_t> polyFlat = loadDataSingle(i, "cluePoly", clueLength * party_size_glb + prng_seed_uint64_count);
+        vector<vector<long>> cluePolynomial(clueLength, vector<long>(party_size_glb));
+
+        int prng_seed_uint64_counter = 0;
+        for (auto &s : seed) {
+            s = polyFlat[clueLength * party_size_glb + prng_seed_uint64_counter];
+            prng_seed_uint64_counter++;
+        }
+
+        vector<vector<int>> ids(1);
+        ids[0] = targetId;
+        vector<vector<int>> compressed_id = compressId(param, seed, generateExponentialExtendedId(param, ids));
+
         vector<long> res(clueLength, 0);
         int res_ind = 0;
 
@@ -147,8 +210,8 @@ void loadObliviousMultiplexerClues(vector<int> pertinent_msgs, vector<PVWCiphert
         clues[i-start].b = NativeVector(param.ell);
 
         for (int c = 0; c < clueLength; c++) {
-            for(int j = 0; j < id_size_glb; j++) {
-                res[c] = (res[c] + polyFlat[c * id_size_glb + j] * targetId[j]) % param.q;
+            for(int j = 0; j < compressed_id[0].size(); j++) {
+                res[c] = (res[c] + polyFlat[c * compressed_id[0].size() + j] * compressed_id[0][j]) % param.q;
                 res[c] = res[c] < 0 ? res[c] + param.q : res[c];
             }
         }

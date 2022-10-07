@@ -19,7 +19,6 @@ void choosePertinentMsg(int numOfTransactions, int pertinentMsgNum, vector<int>&
     auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
     RandomToStandardAdapter engine(rng->create());
     uniform_int_distribution<uint64_t> dist(0, numOfTransactions - 1);
-
     for (int i = 0; i < pertinentMsgNum; i++) {
         auto temp = dist(engine);
         while(find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), temp) != pertinentMsgIndices.end()){
@@ -28,6 +27,7 @@ void choosePertinentMsg(int numOfTransactions, int pertinentMsgNum, vector<int>&
         pertinentMsgIndices.push_back(temp);
     }
     sort(pertinentMsgIndices.begin(), pertinentMsgIndices.end());
+    // pertinentMsgIndices.push_back(0);
 
     cout << "Expected Message Indices: " << pertinentMsgIndices << endl;
 }
@@ -447,15 +447,37 @@ vector<vector<int>> initializeRecipientId(const PVWParam& params, int partySize,
     return ids;
 }
 
+/**
+ * @brief Serve as sanity check, does not deal with GOMR logic; verify that the pertinent message clue can be accurately recovered
+ * from the cluePoly based on the recipient's target ID.
+ * 
+ * @param params PVW parameter
+ * @param extended_id exponential-extended version of a recipient ID, size = party_size_glb * id_size_glb
+ * @param index pertinent message index
+ * @param partySize party size
+ * @param prepare if the encrypted version of ID is sent, prepare = true, and we minus q/4 beforehand for b since message = 1
+ * @return true/false
+ */
+bool verify(const PVWParam& params, const vector<int>& extended_id, int index, int partySize = party_size_glb, bool prepare = false) {
+    prng_seed_type seed;
+    vector<uint64_t> polyFlat = loadDataSingle(index, "cluePoly", (params.n + params.ell) * partySize + prng_seed_uint64_count);
+    int prng_seed_uint64_counter = 0;
+    for (auto &i : seed) {
+        i = polyFlat[(params.n + params.ell) * partySize + prng_seed_uint64_counter];
+        prng_seed_uint64_counter++;
+    }
 
-bool verify(const PVWParam& params, const vector<int>& targetId, int index, bool prepare = false) {
-    vector<uint64_t> polyFlat = loadDataSingle(index, "cluePoly", (params.n + params.ell) * id_size_glb);
-    vector<vector<long>> cluePolynomial(params.n + params.ell, vector<long>(id_size_glb));
+    vector<vector<int>> ids(1);
+    ids[0] = extended_id;
+    vector<vector<int>> compressed_id = compressId(params, seed, ids);
+
+
+    vector<vector<long>> cluePolynomial(params.n + params.ell, vector<long>(compressed_id[0].size()));
     vector<long> res(params.n + params.ell, 0);
 
     for (int i = 0; i < params.n + params.ell; i++) {
-        for(int j = 0; j < id_size_glb; j++) {
-            res[i] = (res[i] + polyFlat[i * id_size_glb + j] * targetId[j]) % params.q;
+        for(int j = 0; j < compressed_id[0].size(); j++) {
+            res[i] = (res[i] + polyFlat[i * compressed_id[0].size() + j] * compressed_id[0][j]) % params.q;
             res[i] = res[i] < 0 ? res[i] + params.q : res[i];
         }
     }
@@ -464,7 +486,7 @@ bool verify(const PVWParam& params, const vector<int>& targetId, int index, bool
 
     for (int i = 0; i < params.n + params.ell; i++) {
         long temp = expected[i] - 16384;
-        temp = temp < 0 ? temp + 65537 : temp % 65537;
+        temp = temp < 0 ? temp + params.q : temp % params.q;
         if ((prepare && i >= params.n && temp != res[i]) || (prepare && i < params.n && expected[i] != res[i]) || (!prepare && expected[i] != res[i])) {
             return false;
         }
@@ -480,10 +502,13 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
     vector<vector<int>> ids;
     vector<PVWCiphertext> clues;
     bool check = false;
-
-    for(int i = 0; i < numOfTransactions; i++){
-        // cout << i << " " << chrono::high_resolution_clock::now() << endl;
+    for(int i = 0; i < numOfTransactions; i++) {
         while (true) {
+            prng_seed_type seed;
+            for (auto &i : seed) {
+                i = random_uint64();
+            }
+
             if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
                 check = true;
                 ids = initializeRecipientId(params, party_size_glb - 1, id_size_glb);
@@ -495,12 +520,15 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
             // if i is pertinent for recipient r, then its clue is already generated via given sk, and will be in the same equation
             // i.e., when multiplied the polynomial matrix with the recipient r's ID, detector will get clue i.
             loadClues(clues, i * partySize, i * partySize + partySize, params);
-            vector<vector<long>> cluePolynomial = agomr::generateClue(params, clues, ids, prepare);
-            saveGroupClues(cluePolynomial, i);
+
+            vector<vector<int>> extended_ids = generateExponentialExtendedId(params, ids, partySize);
+            vector<vector<int>> compressed_ids = compressId(params, seed, extended_ids);
+            vector<vector<long>> cluePolynomial = agomr::generateClue(params, clues, compressed_ids, prepare);
+            saveGroupClues(cluePolynomial, seed, i);
 
             if (check) {
                 check = false;
-                if (verify(params, targetId, i, prepare)) {
+                if (verify(params, extended_ids[partySize-1], i, partySize, prepare)) {
                     break;
                 } else {
                     cout << "Mismatch detected, regenerating clue poly for msg: " << i << endl;

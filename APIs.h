@@ -4,7 +4,7 @@
 #include "include/retrieval.h"
 #include "include/client.h"
 #include "include/LoadAndSaveUtils.h"
-#include "include/scheme.h"
+#include "include/Scheme.h"
 #include <NTL/BasicThreadPool.h>
 #include <NTL/ZZ.h>
 #include <thread>

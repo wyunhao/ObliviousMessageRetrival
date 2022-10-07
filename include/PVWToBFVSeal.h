@@ -206,6 +206,8 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
                 }
             }
 
+            // multiply with random, reduce, same for b
+
             // use the last switchingKey encrypting targetId with id-size as one unit, and rotate
             Plaintext plaintext;
             batch_encoder.encode(vectorOfA, plaintext);
@@ -219,6 +221,7 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
             }
             evaluator.rotate_rows_inplace(switchingKey[switchingKey.size() - 1], 1, gal_keys);
         }
+
 
         // perform ciphertext multi with switchingKey encrypted SK with [450] as one unit, and rotate
         for(int j = 0; j < param.ell; j++){

@@ -16,6 +16,15 @@ using namespace seal;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+/**
+ * 
+ * @brief GOMR1 is generalization of OMR to group OMR, sender duplicates each message T times, where T is the group size,
+ * and then the detector will group all those message together for a single recipient in the group.
+ * Therefore the PV value can add up to T, instead of {0,1} in OMR.
+ * 
+ * Generally, all GOMR1_XXX are deterministic, no hash bucket are used for compressing PV and messages.
+ * 
+ */
 void GOMR1() {
 
     size_t poly_modulus_degree = poly_modulus_degree_glb;
@@ -32,7 +41,7 @@ void GOMR1() {
     cout << "Finishing generating sk for PVW cts\n";
 
     // step 2. prepare transactions
-    vector<int> pertinentMsgIndices(num_of_pertinent_msgs_glb);
+    vector<int> pertinentMsgIndices;
     auto expected = preparingTransactionsFormal(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb, params, party_size_glb);
     cout << expected.size() << " pertinent msg: Finishing preparing messages\n";
 
@@ -104,7 +113,7 @@ void GOMR1() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
+    vector<int> steps_next = {0,32,64,128,256,512};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;
@@ -241,6 +250,15 @@ void GOMR1() {
         cout << "Overflow" << endl;
 }
 
+
+/**
+ * 
+ * @brief GOMR2 is based on GOMR1, the only difference (improvement of efficiency) is that GOMR2 use hashed buckets to store
+ * PV and messages, while GOMR1 is deterministic.
+ * 
+ * Generally, all GOMR2_XXX uses hash buckets to store PV and message for a smaller digest size.
+ * 
+ */
 void GOMR2() {
 
     size_t poly_modulus_degree = poly_modulus_degree_glb;
@@ -257,7 +275,7 @@ void GOMR2() {
     cout << "Finishing generating sk for PVW cts\n";
 
     // step 2. prepare transactions
-    vector<int> pertinentMsgIndices(num_of_pertinent_msgs_glb);
+    vector<int> pertinentMsgIndices;
     auto expected = preparingTransactionsFormal(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb, params, party_size_glb);
     cout << expected.size() << " pertinent msg: Finishing preparing messages\n";
 
@@ -486,7 +504,20 @@ void GOMR2() {
     }
 }
 
-
+/**
+ * @brief Based on GOMR1.
+ * 
+ * The main idea of ObliviousMultiplexer is to assign a random ID for each recipient and first generate a clue for each recipients.
+ * As a sender, it chooses a group of IDs (representing the recipients), compute matrix CM, such that CM x ID_i = clue_i for each i in the Ad-hoc group.
+ * Notice that to make sure the gaussian elimination works when solving CM, we first perform an exponential-entension on each ID,
+ * i.e., ID' = (id_1^1, ... , id_1^T, ..., id_T'^1, ..., id_T'^T), where id_i is the i-th element in ID, T' is id-size, T is group-size.
+ * And then times the new [ID'] matrix (which is full rank) with another random matrix (which is full rank of high prob) to preserve the rank
+ * while shrinking the size, which gives us a comparatively smaller CM matrix.
+ * As a detector, each message will NOT be duplicated, i.e., it has only one corresponding clue. Given the PLAIN version of recipient's ID,
+ * it compute CM_i x ID, for each message i, as the "clue" in OMR, and then follow the same remaining logic. Notice that here the PV value is always {0,1}.
+ * As a recipient, the decryption logic is the same as in OMR.
+ * 
+ */
 void GOMR1_ObliviousMultiplexer() {
 
     size_t poly_modulus_degree = poly_modulus_degree_glb;
@@ -711,6 +742,13 @@ void GOMR1_ObliviousMultiplexer() {
 }
 
 
+/**
+ * 
+ * @brief Based on GOMR2.
+ * 
+ * The remaining logic follows as in GOMR1_ObliviousMultiplexer.
+ * 
+ */
 void GOMR2_ObliviousMultiplexer() {
 
     size_t poly_modulus_degree = poly_modulus_degree_glb;
@@ -745,7 +783,7 @@ void GOMR2_ObliviousMultiplexer() {
     auto coeff_modulus = CoeffModulus::Create(poly_modulus_degree, { 28,
                                                                             60, 60, 60, 60, 60,
                                                                             60, 60, 60, 60, 60, 60,
-                                                                            60, 30, 60 });
+                                                                            60, 60, 60 });
     parms.set_coeff_modulus(coeff_modulus);
     parms.set_plain_modulus(params.q);
 
@@ -805,7 +843,7 @@ void GOMR2_ObliviousMultiplexer() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
+    vector<int> steps_next = {0,32,64,128,256,512};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;

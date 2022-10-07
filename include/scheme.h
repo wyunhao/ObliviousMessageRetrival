@@ -1,4 +1,6 @@
 #include "MRE.h"
+#include "client.h"
+#include "OMRUtil.h"
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -118,7 +120,7 @@ namespace agomr
 
     AdhocGroupClue generateClue(const PVWParam& params, vector<PVWCiphertext> clues, vector<vector<int>> ids, bool prepare = false, int clueLength = 454) {
         vector<vector<long>> temp;
-        AdhocGroupClue cluePolynomial(clueLength, vector<long>(id_size_glb));
+        AdhocGroupClue cluePolynomial(clueLength, vector<long>(party_size_glb));
         for (int a = 0; a < clueLength; a++) {
             vector<vector<int>> rhs(ids.size(), vector<int>(1, -1));
             vector<vector<int>> lhs = ids;
@@ -126,7 +128,7 @@ namespace agomr
 
             temp = equationSolvingRandom(lhs, rhs, -1);
 
-            for(int j = 0; j < id_size_glb; j++){
+            for(int j = 0; j < party_size_glb; j++){
                 cluePolynomial[a][j] = temp[j][0];
             }
         }
