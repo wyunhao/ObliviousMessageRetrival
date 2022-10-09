@@ -507,14 +507,17 @@ void GOMR2() {
 /**
  * @brief Based on GOMR1.
  * 
+ * "ObliviousMultiplexer" as suffix means that we form IDs in a group into a matrix and solve a linear equation for it, s.t., f(id) = clue.
+ * 
  * The main idea of ObliviousMultiplexer is to assign a random ID for each recipient and first generate a clue for each recipients.
  * As a sender, it chooses a group of IDs (representing the recipients), compute matrix CM, such that CM x ID_i = clue_i for each i in the Ad-hoc group.
  * Notice that to make sure the gaussian elimination works when solving CM, we first perform an exponential-entension on each ID,
  * i.e., ID' = (id_1^1, ... , id_1^T, ..., id_T'^1, ..., id_T'^T), where id_i is the i-th element in ID, T' is id-size, T is group-size.
  * And then times the new [ID'] matrix (which is full rank) with another random matrix (which is full rank of high prob) to preserve the rank
  * while shrinking the size, which gives us a comparatively smaller CM matrix.
- * As a detector, each message will NOT be duplicated, i.e., it has only one corresponding clue. Given the PLAIN version of recipient's ID,
- * it compute CM_i x ID, for each message i, as the "clue" in OMR, and then follow the same remaining logic. Notice that here the PV value is always {0,1}.
+ * As a detector, each message will NOT be duplicated, i.e., it has only one corresponding clue. Notice that each clue not only contains the matrix CM,
+ * but also the randomness used to shrink the size. Given the PLAIN version of recipient's ID, it compute CM_i x ID, for each message i, as the "clue" in OMR,
+ * and then follow the same remaining logic. Notice that here the PV value is always {0,1}.
  * As a recipient, the decryption logic is the same as in OMR.
  * 
  */
@@ -988,7 +991,20 @@ void GOMR2_ObliviousMultiplexer() {
 }
 
 
-
+/**
+ * @brief Based on GOMR1. The main idea of ObliviousMultiplexer follows from above.
+ * 
+ * "BFV" as suffix means that the targetID is encrypted in a BFV ciphertext.
+ * 
+ * The difference is that in previous algorithm, target ID is transparent to detector, while here it is encrypted.
+ * i.e., as a detector, given the encrypted exponential-extended targetID, it first loads the cluePoly matrix CM 
+ * of size (param.n+param.ell) x (party_size), and generates the random matrix R of size (party_size*id_size) x party_size
+ * which is generated based on the published randomness in the clue of each message.
+ * It computes CM x R^T, and then multiply the result with encrypted extended ID via function computeBplusASPVWOptimizedWithCluePoly.
+ * 
+ * All the other details remain the same. 
+ * 
+ */
 void GOMR1_ObliviousMultiplexer_BFV() {
 
     size_t poly_modulus_degree = poly_modulus_degree_glb;
@@ -1081,7 +1097,7 @@ void GOMR1_ObliviousMultiplexer_BFV() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
+    vector<int> steps_next = {0,32,64,128,256,512};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
         //////////////////////////////////////
     vector<Modulus> coeff_modulus_last = coeff_modulus;
@@ -1129,9 +1145,10 @@ void GOMR1_ObliviousMultiplexer_BFV() {
             // divide messages into parties, for partySize ciphertexts, each ciphertext p encrypt the PVs of the p-th messages in all groups
             // sum up all ciphertexts into one, s.t. each slot in the final ciphertext encrypts a single group
             Ciphertext packedSIC_temp;
-            loadData(cluePolyMatrics[i], counter[i], counter[i]+poly_modulus_degree, "cluePoly", 454 * id_size_glb);
+
+            loadOMClueWithRandomness(params, cluePolyMatrics[i], counter[i], counter[i]+poly_modulus_degree, 454 * party_size_glb + prng_seed_uint64_count);
             packedSICfromPhase1[i][j] = serverOperations1obtainPackedSICWithCluePoly(cluePolyMatrics[i], switchingKey, relin_keys, gal_keys,
-                                                                poly_modulus_degree, context, params, poly_modulus_degree);
+                                                                                     poly_modulus_degree, context, params, poly_modulus_degree);
             j++;
             counter[i] += poly_modulus_degree;
             SICPVW_multicore[i].clear();
@@ -1214,8 +1231,13 @@ void GOMR1_ObliviousMultiplexer_BFV() {
 }
 
 
+/**
+ * @brief Based on GOMR2. 
+ * 
+ * The remaining logic follows as in GOMR1_ObliviousMultiplexer_BFV.
+ * 
+ */
 void GOMR2_ObliviousMultiplexer_BFV() {
-
     size_t poly_modulus_degree = poly_modulus_degree_glb;
 
     int numOfTransactions = numOfTransactions_glb;
@@ -1354,9 +1376,10 @@ void GOMR2_ObliviousMultiplexer_BFV() {
             // divide messages into parties, for partySize ciphertexts, each ciphertext p encrypt the PVs of the p-th messages in all groups
             // sum up all ciphertexts into one, s.t. each slot in the final ciphertext encrypts a single group
             Ciphertext packedSIC_temp;
-            loadData(cluePolyMatrics[i], counter[i], counter[i]+poly_modulus_degree, "cluePoly", 454 * id_size_glb);
+            loadOMClueWithRandomness(params, cluePolyMatrics[i], counter[i], counter[i]+poly_modulus_degree, 454 * party_size_glb + prng_seed_uint64_count);
             packedSICfromPhase1[i][j] = serverOperations1obtainPackedSICWithCluePoly(cluePolyMatrics[i], switchingKey, relin_keys, gal_keys,
-                                                                poly_modulus_degree, context, params, poly_modulus_degree);
+                                                                                     poly_modulus_degree, context, params, poly_modulus_degree);
+
             j++;
             counter[i] += poly_modulus_degree;
             SICPVW_multicore[i].clear();

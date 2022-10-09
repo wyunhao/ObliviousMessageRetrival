@@ -27,7 +27,7 @@ void choosePertinentMsg(int numOfTransactions, int pertinentMsgNum, vector<int>&
         pertinentMsgIndices.push_back(temp);
     }
     sort(pertinentMsgIndices.begin(), pertinentMsgIndices.end());
-    // pertinentMsgIndices.push_back(0);
+    // pertinentMsgIndices.push_back(100);
 
     cout << "Expected Message Indices: " << pertinentMsgIndices << endl;
 }
@@ -70,7 +70,6 @@ vector<vector<uint64_t>> preparingTransactionsFormal(vector<int>& pertinentMsgIn
         }
         saveClues(tempclue, i*partySize + partySize - 1);
     }
-    cout << endl;
     return ret;
 }
 
@@ -91,8 +90,10 @@ Ciphertext serverOperations1obtainPackedSIC(vector<PVWCiphertext>& SICPVW, vecto
 
 
 // Phase 1, obtaining PV's based on encrypted targetId
+// used in GOMR1/2_ObliviousMultiplexer_BFV
 Ciphertext serverOperations1obtainPackedSICWithCluePoly(vector<vector<uint64_t>>& cluePoly, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
-                            const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params, const int numOfTransactions){
+                                                        const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context,
+                                                        const PVWParam& params, const int numOfTransactions) {
     Evaluator evaluator(context);
     
     vector<Ciphertext> packedSIC(params.ell);
@@ -459,6 +460,9 @@ vector<vector<int>> initializeRecipientId(const PVWParam& params, int partySize,
  * @return true/false
  */
 bool verify(const PVWParam& params, const vector<int>& extended_id, int index, int partySize = party_size_glb, bool prepare = false) {
+    for (int i=0; i< extended_id_glb.size(); i++) {
+        extended_id_glb[i] = extended_id[i];
+    }
     prng_seed_type seed;
     vector<uint64_t> polyFlat = loadDataSingle(index, "cluePoly", (params.n + params.ell) * partySize + prng_seed_uint64_count);
     int prng_seed_uint64_counter = 0;
@@ -470,7 +474,6 @@ bool verify(const PVWParam& params, const vector<int>& extended_id, int index, i
     vector<vector<int>> ids(1);
     ids[0] = extended_id;
     vector<vector<int>> compressed_id = compressId(params, seed, ids);
-
 
     vector<vector<long>> cluePolynomial(params.n + params.ell, vector<long>(compressed_id[0].size()));
     vector<long> res(params.n + params.ell, 0);
@@ -554,7 +557,6 @@ vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices,
     for (auto &i : mreseed) {
         i = random_uint64();
     }
-    cout << endl;
     for(int i = 0; i < numOfTransactions; i++){
         PVWCiphertext tempclue;
 

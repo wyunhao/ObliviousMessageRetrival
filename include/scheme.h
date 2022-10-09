@@ -71,7 +71,7 @@ namespace agomr
     typedef vector<vector<long>> AdhocGroupClue;
     typedef vector<Ciphertext> AdhocDetectionKey;
 
-    // add encrypted targetID as the last switching key based on the original logic
+    // add encrypted extended-targetID as the last switching key based on the original logic
     AdhocDetectionKey generateDetectionKey(const vector<int>& targetId, const SEALContext& context, const size_t& degree, 
                             const PublicKey& BFVpk, const SecretKey& BFVsk, const PVWsk& regSk, const PVWParam& params) {
         
@@ -98,15 +98,19 @@ namespace agomr
             encryptor.encrypt_symmetric(plaintext, switchingKey[j]);
         }
 
+        vector<vector<int>> ids(1);
+        ids[0] = targetId;
+        vector<vector<int>> extended_ids = generateExponentialExtendedId(params, ids);
+
         if (switchingKey.size() > params.ell) {
-            for (tempn = 1; tempn < targetId.size(); tempn *= 2) {} // encrypted the targetId for 1 * id_size
+            for (tempn = 1; tempn < extended_ids[0].size(); tempn *= 2) {} // encrypted the exp-extended targetId for 1 x (id_size*party_size)
             vector<uint64_t> skInt(degree);
             for (size_t i = 0; i < degree; i++) {
                 auto tempindex = i % uint64_t(tempn);
-                if(int(tempindex) >= targetId.size()) {
+                if(int(tempindex) >= extended_ids[0].size()) {                                                                                                                                                                                                              
                     skInt[i] = 0;
                 } else {
-                    skInt[i] = uint64_t((targetId[tempindex]) % params.q);
+                    skInt[i] = uint64_t((extended_ids[0][tempindex]) % params.q);
                 }
             }
             Plaintext plaintext;

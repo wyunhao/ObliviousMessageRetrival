@@ -18,12 +18,12 @@ vector<vector<int>> generateExponentialExtendedId(const PVWParam& params, vector
     return extended_ids;
 }
 
-vector<vector<int>> generateRandomMatrixWithSeed(const PVWParam& params, prng_seed_type seed, int row, int col) {
-    vector<vector<int>> random_matrix(row, vector<int>(col));
+vector<vector<uint64_t>> generateRandomMatrixWithSeed(const PVWParam& params, prng_seed_type seed, int row, int col) {
+    vector<vector<uint64_t>> random_matrix(row, vector<uint64_t>(col));
 
     auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
     RandomToStandardAdapter engine(rng->create());
-    uniform_int_distribution<int> dist(0, params.q - 1);
+    uniform_int_distribution<uint64_t> dist(0, params.q - 1);
 
     for (int i = 0; i < random_matrix.size(); i++) {
         for (int j = 0; j < random_matrix[0].size(); j++) {
@@ -36,18 +36,16 @@ vector<vector<int>> generateRandomMatrixWithSeed(const PVWParam& params, prng_se
 
 vector<vector<int>> compressId(const PVWParam& params, prng_seed_type seed, vector<vector<int>> ids) {
     vector<vector<int>> compressed_ids(ids.size(), vector<int>(party_size_glb));
-    vector<vector<int>> random_matrix = generateRandomMatrixWithSeed(params, seed, ids[0].size(), party_size_glb);
+    vector<vector<uint64_t>> random_matrix = generateRandomMatrixWithSeed(params, seed, ids[0].size(), party_size_glb);
 
     for (int i = 0; i < compressed_ids.size(); i++) {
         for (int j = 0; j < compressed_ids[0].size(); j++) {
-            compressed_ids[i][j] = 0;
+            long temp = 0;
             for (int k = 0; k < random_matrix.size(); k++) {
-                compressed_ids[i][j] += ids[i][k] * random_matrix[k][j];
-                compressed_ids[i][j]  %= params.q;
-                while(compressed_ids[i][j] < 0) {
-                    compressed_ids[i][j] += params.q;
-                }
+                temp = (temp + ids[i][k] * random_matrix[k][j]) % params.q;
+                temp = temp < 0 ? temp += params.q : temp;
             }
+            compressed_ids[i][j] = temp;
         }
     }
 
@@ -159,6 +157,64 @@ void loadData(vector<vector<uint64_t>>& msgs, const int& start, const int& end, 
         }
     }
 }
+
+/**
+ * @brief For ObliviousMultiplexer, the clue includes ((param.n + param.ell) * party_size_glb + prng_seed_count) elements.
+ * Different from loadData, this function load the cluePoly.txt into two separate data structures, one is the normal cluPoly CM of size (clue_length) x (party_size),
+ * one is randomness, and then use the randomness to generate a random matrix R of size (party_size * id_size) x party_size.
+ * The resulted matrix CM*R^T, of size (clue_length) x (party_size * id_size).
+ * Different from loadObliviousMultiplexerClues, this one does not multiply the result with target Id, since the later one is encrypted.
+ * 
+ * @param cluePoly 
+ * @param randomness 
+ * @param start 
+ * @param end 
+ * @param payloadSize 
+ */
+void loadOMClueWithRandomness(const PVWParam& params, vector<vector<uint64_t>>& cluePoly, const int& start, const int& end, int payloadSize = 306, int clueLength = 454) {
+    vector<uint64_t> temp(payloadSize - prng_seed_uint64_count);
+    vector<uint64_t> randomness(prng_seed_uint64_count);
+    cluePoly.resize(end-start);
+
+    int prng_seed_uint64_counter;
+    prng_seed_type seed;
+
+    for(int i = start; i < end; i++){
+        cluePoly[i].resize(454 * id_size_glb * party_size_glb);
+        ifstream datafile;
+
+        datafile.open("../data/cluePoly/"+to_string(i)+".txt");
+        datafile.seekg(0, ios::beg);
+        for(int j = 0; j < payloadSize; j++){
+            if (j < payloadSize - prng_seed_uint64_count) {
+                datafile >> temp[j];
+            } else {
+                datafile >> randomness[j - (payloadSize - prng_seed_uint64_count)];
+            }
+        }
+        datafile.close();
+
+        prng_seed_uint64_counter = 0;
+        for (auto &i : seed) {
+            i = randomness[prng_seed_uint64_counter];
+            prng_seed_uint64_counter++;
+        }
+
+        vector<vector<uint64_t>> random = generateRandomMatrixWithSeed(params, seed, id_size_glb * party_size_glb, party_size_glb);
+
+        for (int c = 0; c < cluePoly[i].size(); c++) {
+            int row_index = c / (id_size_glb * party_size_glb);
+            int col_index = c % (id_size_glb * party_size_glb);
+            long tempClue = 0;
+            for (int k = 0; k < party_size_glb; k++) {
+                tempClue = (tempClue + temp[row_index * party_size_glb + k] * random[col_index][k]) % params.q;
+                tempClue = tempClue < 0 ? tempClue + params.q : tempClue;
+            }
+            cluePoly[i][c] = tempClue;
+        }
+    }
+}
+
 
 void loadClues(vector<PVWCiphertext>& clues, const int& start, const int& end, const PVWParam& param, int party_ind = 0, int partySize = 1){
     clues.resize(end-start);

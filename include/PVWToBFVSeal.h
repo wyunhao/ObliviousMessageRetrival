@@ -168,16 +168,25 @@ void expandSIC_Alt(vector<Ciphertext>& expanded, Ciphertext& toExpand, const Gal
 }
 
 
-// compute b - as with packed swk but also only requires one rot key
-// const vector<PVWCiphertext>& toPack,
-void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const vector<vector<uint64_t>>& cluePoly,
-                                            vector<Ciphertext>& switchingKey, const RelinKeys& relin_keys, const GaloisKeys& gal_keys,
-                                            const SEALContext& context, const PVWParam& param) { 
+/**
+ * @brief compute b - as with packed swk but also only requires one rot key
+ * 
+ * @param output computed b-aSK ciphertexts (ell ciphertexts for each message)
+ * @param cluePoly flatten cluePoly for each message
+ * @param switchingKey encryptedSK with encrypted ID as the last switching key
+ * @param relin_keys relinear key
+ * @param gal_keys galois key
+ * @param context SEAL context for evaluator and encoder
+ * @param param PVWParam
+ */
+void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const vector<vector<uint64_t>>& cluePoly, vector<Ciphertext>& switchingKey,
+                                            const RelinKeys& relin_keys, const GaloisKeys& gal_keys, const SEALContext& context,
+                                            const PVWParam& param) { 
 
     MemoryPoolHandle my_pool = MemoryPoolHandle::New(true);
     auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
 
-    int tempn;
+    int tempn, tempId;
 
     Evaluator evaluator(context);
     BatchEncoder batch_encoder(context);
@@ -188,31 +197,37 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
     }
 
     for (tempn = 1; tempn < param.n; tempn *= 2) {}
+    for (tempId = 1; tempId < id_size_glb * party_size_glb; tempId *= 2) {}
+
+    /**
+     * @brief when i = 0; partial_a encrypted (a_00, a_11, a_22, ...)
+     * when i = 1; partial_a encrypted (a_01, a_12, a_23, ...)
+     * so that in the first iteration, we have (a_00, a_11, a_22, ...) * (sk0, sk1, sk2, ...), and
+     * in the second iteration, we have (a_01, a_12, a_23, ...) * (sk1, sk2, sk3, ...).
+     * Eventually when we sum them up, we would have the sum if inner product on each entry:
+     * --> (A0*sk, A1*sk, ...) = (b0, b1, ...) (in all ell such vectors)
+     */
     for (int i = 0; i < tempn; i++) {
-        // when i = 0; partial_a encrypted (a_00, a_11, a_22, ...)
-        // when i = 1; partial_a encrypted (a_01, a_12, a_23, ...)
         Ciphertext partial_a;
-        for (int id_index = 0; id_index < id_size_glb; id_index++) {
+        for (int eid_index = 0; eid_index < tempId; eid_index++) {
             vector<uint64_t> vectorOfA(cluePoly.size());
-            // cluePoly[i][j] = cluePoly.size() x id_size_glb
+            // cluePoly[i][j] = cluePoly.size() x (id_size_glb * party_size_glb)
             // where, the row: newCluePoly[i] = i-th msg, (i + j) % tempn row of the original matrix
             for (int j = 0; j < cluePoly.size(); j++) {
                 int row_index = (j + i) % tempn;
-                int col_index = (j + id_index) % id_size_glb;
-                if (row_index >= param.n) {
+                int col_index = (j + eid_index) % (tempId);
+                if (row_index >= param.n || col_index >= id_size_glb * party_size_glb) {
                     vectorOfA[j] = 0;
                 } else {
-                    vectorOfA[j] = cluePoly[j][row_index * id_size_glb + col_index];
+                    vectorOfA[j] = cluePoly[j][row_index * (id_size_glb*party_size_glb) + col_index];
                 }
             }
 
-            // multiply with random, reduce, same for b
-
-            // use the last switchingKey encrypting targetId with id-size as one unit, and rotate
+            // use the last switchingKey encrypting targetId with extended id_size_glbid-size as one unit, and rotate
             Plaintext plaintext;
             batch_encoder.encode(vectorOfA, plaintext);
 
-            if (id_index == 0) {
+            if (eid_index == 0) {
                 evaluator.multiply_plain(switchingKey[switchingKey.size() - 1], plaintext, partial_a);
             } else {
                 Ciphertext temp;
@@ -221,7 +236,6 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
             }
             evaluator.rotate_rows_inplace(switchingKey[switchingKey.size() - 1], 1, gal_keys);
         }
-
 
         // perform ciphertext multi with switchingKey encrypted SK with [450] as one unit, and rotate
         for(int j = 0; j < param.ell; j++){
@@ -241,16 +255,16 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
 
     // multiply (encrypted Id) with ell different (clue poly for b)
     vector<Ciphertext> b_parts(param.ell);
-    for (tempn = 1; tempn < id_size_glb; tempn *= 2) {}
+    for (tempn = 1; tempn < id_size_glb * party_size_glb; tempn *= 2) {}
     for (int i = 0; i < tempn; i++) {
         for (int e = 0; e < param.ell; e++) {
             vector<uint64_t> vectorOfB(cluePoly.size());
-            for (size_t j = 0; j < cluePoly.size(); j++) {
-                int the_index = (i+int(j))%tempn;
-                if (the_index >= id_size_glb) {
+            for (int j = 0; j < cluePoly.size(); j++) {
+                int the_index = (i + j) % tempn;
+                if (the_index >= id_size_glb * party_size_glb) {
                     vectorOfB[j] = 0;
                 } else {
-                    vectorOfB[j] = cluePoly[j][(450 + e) * id_size_glb + the_index];
+                    vectorOfB[j] = cluePoly[j][(param.n + e) * (id_size_glb * party_size_glb) + the_index];
                 }
             }
 
@@ -341,71 +355,8 @@ void computeBplusASPVWOptimized(vector<Ciphertext>& output, \
 }
 
 
-
-void computeBplusASPVWOptimizedtest(vector<Ciphertext>& output, \
-        const vector<PVWCiphertext>& toPack, vector<Ciphertext>& switchingKey, const GaloisKeys& gal_keys,
-        const SEALContext& context, const PVWParam& param, const SecretKey& sk) {
-    MemoryPoolHandle my_pool = MemoryPoolHandle::New(true);
-    auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
-
-    int tempn;
-    for(tempn = 1; tempn < param.n; tempn*=2){}
-
-    Evaluator evaluator(context);
-    Decryptor decryptor(context, sk);
-    BatchEncoder batch_encoder(context);
-    size_t slot_count = batch_encoder.slot_count();
-    if(toPack.size() > slot_count){
-        cerr << "Please pack at most " << slot_count << " PVW ciphertexts at one time." << endl;
-        return;
-    }
-
-    for(int i = 0; i < tempn; i++){
-        vector<uint64_t> vectorOfInts(toPack.size());
-        for(size_t j = 0; j < toPack.size(); j++){
-            int the_index = (i+int(j))%tempn;
-            if(the_index >= param.n) {
-                vectorOfInts[j] = 0;
-            } else {
-                vectorOfInts[j] = uint64_t((toPack[j].a[the_index].ConvertToInt()));
-            }
-        }
-
-        Plaintext plaintext;
-        batch_encoder.encode(vectorOfInts, plaintext);
-        
-        for(int j = 0; j < param.ell; j++){
-            if(i == 0){
-                evaluator.multiply_plain(switchingKey[j], plaintext, output[j]); // times s[i]
-            }
-            else{
-                Ciphertext temp;
-                evaluator.multiply_plain(switchingKey[j], plaintext, temp);
-                evaluator.add_inplace(output[j], temp);
-            }
-            // rotate one slot at a time
-            evaluator.rotate_rows_inplace(switchingKey[j], 1, gal_keys);
-        }
-    }
-
-    for(int i = 0; i < param.ell; i++){
-        vector<uint64_t> vectorOfInts(toPack.size());
-        for(size_t j = 0; j < toPack.size(); j++){
-            vectorOfInts[j] = uint64_t((toPack[j].b[i].ConvertToInt() - 16384) % 65537);
-            // 16384 here is due to the implementation of PVW ciphertext. Needs to shift by ~q/4 so that the decryption is around 0
-        }
-        Plaintext plaintext;
-
-        batch_encoder.encode(vectorOfInts, plaintext);
-        evaluator.negate_inplace(output[i]);
-        evaluator.add_plain_inplace(output[i], plaintext);
-        evaluator.mod_switch_to_next_inplace(output[i]); 
-    }
-    MemoryManager::SwitchProfile(std::move(old_prof));
-}
-
-inline
-void calUptoDegreeK(vector<Ciphertext>& output, const Ciphertext& input, const int DegreeK, const RelinKeys &relin_keys, const SEALContext& context){
+inline void calUptoDegreeK(vector<Ciphertext>& output, const Ciphertext& input, const int DegreeK, const RelinKeys &relin_keys,
+                           const SEALContext& context) {
     vector<int> calculated(DegreeK, 0);
     Evaluator evaluator(context);
     output[0] = input;
