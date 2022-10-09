@@ -6,16 +6,16 @@
 #include "MRE.h"
 using namespace std;
 
-vector<vector<int>> generateExponentialExtendedId(const PVWParam& params, vector<vector<int>> ids, int partySize = party_size_glb) {
-    vector<vector<int>> extended_ids(ids.size());
-    for (int i = 0; i < ids.size(); i++) {
-        extended_ids[i].resize(ids[i].size() * partySize);
-        for (int j = 0; j < extended_ids[i].size(); j++) {
-            extended_ids[i][j] = power(ids[i][j / partySize], j % partySize + 1, params.q);
+vector<vector<int>> generateExponentialExtendedVector(const PVWParam& params, vector<vector<int>> old_vec, const int extend_size = party_size_glb) {
+    vector<vector<int>> extended_vec(old_vec.size());
+    for (int i = 0; i < old_vec.size(); i++) {
+        extended_vec[i].resize(old_vec[i].size() * extend_size);
+        for (int j = 0; j < extended_vec[i].size(); j++) {
+            extended_vec[i][j] = power(old_vec[i][j / extend_size], j % extend_size + 1, params.q);
         }
     }
 
-    return extended_ids;
+    return extended_vec;
 }
 
 vector<vector<uint64_t>> generateRandomMatrixWithSeed(const PVWParam& params, prng_seed_type seed, int row, int col) {
@@ -34,22 +34,22 @@ vector<vector<uint64_t>> generateRandomMatrixWithSeed(const PVWParam& params, pr
     return random_matrix;
 }
 
-vector<vector<int>> compressId(const PVWParam& params, prng_seed_type seed, vector<vector<int>> ids) {
-    vector<vector<int>> compressed_ids(ids.size(), vector<int>(party_size_glb));
-    vector<vector<uint64_t>> random_matrix = generateRandomMatrixWithSeed(params, seed, ids[0].size(), party_size_glb);
+vector<vector<int>> compressVector(const PVWParam& params, prng_seed_type seed, vector<vector<int>> ids, const int compress_size = party_size_glb) {
+    vector<vector<int>> compressed_result(ids.size(), vector<int>(compress_size));
+    vector<vector<uint64_t>> random_matrix = generateRandomMatrixWithSeed(params, seed, ids[0].size(), compress_size);
 
-    for (int i = 0; i < compressed_ids.size(); i++) {
-        for (int j = 0; j < compressed_ids[0].size(); j++) {
+    for (int i = 0; i < compressed_result.size(); i++) {
+        for (int j = 0; j < compressed_result[0].size(); j++) {
             long temp = 0;
             for (int k = 0; k < random_matrix.size(); k++) {
                 temp = (temp + ids[i][k] * random_matrix[k][j]) % params.q;
                 temp = temp < 0 ? temp += params.q : temp;
             }
-            compressed_ids[i][j] = temp;
+            compressed_result[i][j] = temp;
         }
     }
 
-    return compressed_ids;
+    return compressed_result;
 }
 
 void createDatabase(int num_of_transactions = 524288, int payloadSize = 306){
@@ -257,7 +257,7 @@ void loadObliviousMultiplexerClues(vector<int> pertinent_msgs, vector<PVWCiphert
 
         vector<vector<int>> ids(1);
         ids[0] = targetId;
-        vector<vector<int>> compressed_id = compressId(param, seed, generateExponentialExtendedId(param, ids));
+        vector<vector<int>> compressed_id = compressVector(param, seed, generateExponentialExtendedVector(param, ids));
 
         vector<long> res(clueLength, 0);
         int res_ind = 0;

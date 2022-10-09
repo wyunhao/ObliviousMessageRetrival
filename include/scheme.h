@@ -100,7 +100,7 @@ namespace agomr
 
         vector<vector<int>> ids(1);
         ids[0] = targetId;
-        vector<vector<int>> extended_ids = generateExponentialExtendedId(params, ids);
+        vector<vector<int>> extended_ids = generateExponentialExtendedVector(params, ids);
 
         if (switchingKey.size() > params.ell) {
             for (tempn = 1; tempn < extended_ids[0].size(); tempn *= 2) {} // encrypted the exp-extended targetId for 1 x (id_size*party_size)

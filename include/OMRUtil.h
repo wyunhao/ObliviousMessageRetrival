@@ -473,7 +473,7 @@ bool verify(const PVWParam& params, const vector<int>& extended_id, int index, i
 
     vector<vector<int>> ids(1);
     ids[0] = extended_id;
-    vector<vector<int>> compressed_id = compressId(params, seed, ids);
+    vector<vector<int>> compressed_id = compressVector(params, seed, ids);
 
     vector<vector<long>> cluePolynomial(params.n + params.ell, vector<long>(compressed_id[0].size()));
     vector<long> res(params.n + params.ell, 0);
@@ -524,8 +524,8 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
             // i.e., when multiplied the polynomial matrix with the recipient r's ID, detector will get clue i.
             loadClues(clues, i * partySize, i * partySize + partySize, params);
 
-            vector<vector<int>> extended_ids = generateExponentialExtendedId(params, ids, partySize);
-            vector<vector<int>> compressed_ids = compressId(params, seed, extended_ids);
+            vector<vector<int>> extended_ids = generateExponentialExtendedVector(params, ids, partySize);
+            vector<vector<int>> compressed_ids = compressVector(params, seed, extended_ids);
             vector<vector<long>> cluePolynomial = agomr::generateClue(params, clues, compressed_ids, prepare);
             saveGroupClues(cluePolynomial, seed, i);
 
