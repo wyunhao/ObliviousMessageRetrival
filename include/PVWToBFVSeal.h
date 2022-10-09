@@ -292,15 +292,14 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
 }
 
 
-// compute b - as with packed swk but also only requires one rot key
-void computeBplusASPVWOptimized(vector<Ciphertext>& output, \
-        const vector<PVWCiphertext>& toPack, vector<Ciphertext>& switchingKey, const GaloisKeys& gal_keys,
-        const SEALContext& context, const PVWParam& param) {
+// compute b - aSK with packed swk but also only requires one rot key
+void computeBplusASPVWOptimized(vector<Ciphertext>& output, const vector<PVWCiphertext>& toPack, vector<Ciphertext>& switchingKey, const GaloisKeys& gal_keys,
+        const SEALContext& context, const PVWParam& param, const int partialSize = partial_size_glb, const int partySize = party_size_glb) {
     MemoryPoolHandle my_pool = MemoryPoolHandle::New(true);
     auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
 
-    int tempn;
-    for(tempn = 1; tempn < param.n; tempn*=2){}
+    int tempn, sk_size = param.n - partialSize + partialSize * partySize;
+    for(tempn = 1; tempn < sk_size; tempn*=2){}
 
     Evaluator evaluator(context);
     BatchEncoder batch_encoder(context);
@@ -312,9 +311,9 @@ void computeBplusASPVWOptimized(vector<Ciphertext>& output, \
 
     for(int i = 0; i < tempn; i++){
         vector<uint64_t> vectorOfInts(toPack.size());
-        for(size_t j = 0; j < toPack.size(); j++){
-            int the_index = (i+int(j))%tempn;
-            if(the_index >= param.n) {
+        for(int j = 0; j < toPack.size(); j++){
+            int the_index = (i + j) % tempn;
+            if(the_index >= sk_size) {
                 vectorOfInts[j] = 0;
             } else {
                 vectorOfInts[j] = uint64_t((toPack[j].a[the_index].ConvertToInt()));
@@ -341,8 +340,7 @@ void computeBplusASPVWOptimized(vector<Ciphertext>& output, \
     for(int i = 0; i < param.ell; i++){
         vector<uint64_t> vectorOfInts(toPack.size());
         for(size_t j = 0; j < toPack.size(); j++){
-            vectorOfInts[j] = uint64_t((toPack[j].b[i].ConvertToInt() - 16384) % 65537);
-            // 16384 here is due to the implementation of PVW ciphertext. Needs to shift by ~q/4 so that the decryption is around 0
+            vectorOfInts[j] = uint64_t((toPack[j].b[i].ConvertToInt() - param.q / 4) % param.q);
         }
         Plaintext plaintext;
 

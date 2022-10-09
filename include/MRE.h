@@ -8,7 +8,7 @@
 #include "seal/seal.h"
 #include "global.h"
 #include "client.h"
-
+#include "MathUtil.h"
 
 using namespace seal;
 
@@ -22,7 +22,7 @@ namespace mre {
 
     struct MREpk{
         vector<NativeVector> b_prime; // T x ell, double vector
-        vector<MREsharedSK> shareSK; // T's ell x (ell * T + O(1)) double vectors
+        vector<MREsharedSK> shareSK; // T's ell x partialSize double vectors
 
         MREpk() {}
         MREpk(vector<NativeVector>& b_prime, vector<MREsharedSK>& shareSK)
@@ -31,8 +31,8 @@ namespace mre {
     };
 
     struct MREgroupPK {
-        NativeVector A;
-        NativeVector b;
+        NativeVector A; // A1 || A2, where A1 of size param.n, A2 of size param.n-partialSize + partySize * param.ell (450 + 12*4)
+        NativeVector b; // of size param.ell
 
         MREgroupPK() {}
         MREgroupPK(NativeVector& A, NativeVector& b)
@@ -41,8 +41,8 @@ namespace mre {
     };
 
     struct MREsk{
-        MREsecretSK secretSK; // ell x 450, double vector 
-        MREsharedSK shareSK; // ell x (ell * T + O(1)), double vector
+        MREsecretSK secretSK; // ell x param.n, double vector 
+        MREsharedSK shareSK; // ell x partialSize, double vector
 
         MREsk() {}
         MREsk(MREsecretSK& secret, MREsharedSK& share)
@@ -62,11 +62,13 @@ namespace mre {
         {}
     };
 
-    vector<MREsk> MREgenerateSK(const PVWParam& param, const int partialSize = 40, const int partySize = 8) {
+    vector<MREsk> MREgenerateSK(const PVWParam& param, const PVWsk& targetSK, const int partialSize = partial_size_glb, const int partySize = party_size_glb) {
         vector<MREsk> mreSK(partySize);
 
         for (int i = 0; i < partySize; i++) {
-            auto temp = PVWGenerateSecretKey(param);
+            // put the sk given in param as the first of the group
+            // for pertinent messages, this will the recipient's sk, otherwise, a random sk will be passed in
+            auto temp = i == 0 ? targetSK : PVWGenerateSecretKey(param);
 
             MREsecretSK leftSK(param.ell);
             MREsharedSK rightSK(param.ell);
@@ -87,10 +89,11 @@ namespace mre {
         return mreSK;
     }
 
-    vector<MREpk> MREgeneratePartialPK(const PVWParam& param, const vector<MREsk>& groupSK, prng_seed_type& seed, const int partialSize = 40) {
+    vector<MREpk> MREgeneratePartialPK(const PVWParam& param, const vector<MREsk>& groupSK, prng_seed_type& seed,
+                                       const int partialSize = partial_size_glb) {
         auto mrerng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
         RandomToStandardAdapter engine(mrerng->create());
-        std::uniform_int_distribution<std::mt19937::result_type> dist(0, 65536);
+        std::uniform_int_distribution<std::mt19937::result_type> dist(0, param.q-1);
 
         vector<MREpk> pk(param.m);
         vector<uint64_t> A1(param.n - partialSize), b(param.ell);
@@ -133,16 +136,30 @@ namespace mre {
     }
 
 
-    MREPublicKey MREgeneratePK(const PVWParam& param, vector<MREpk>& mrePK, prng_seed_type& seed, const int partySize = 8, const int partialSize = 40) {
+    /**
+     * @brief Similar to the main idea of ObliviousMultiplexer, besides the normal param.n (n=450) sk, we give 8 more elements (n=458, where partialSize = 8)
+     * serving as the "sharedSK". By first exponential extended up to sk^party_size, we form a sharedSK matrix of size (ell*partySize) x (partialSize * partySize)
+     * and then by multiplying it with a random matrix of size (partialSize*partySize) x (ell*partySize), we perserve it to be full rank = ell*partySize with
+     * high probability. The resulted matrix is then used to solve a linear equation system such that f(sharedSK') = b_prime.
+     * 
+     * @param param PVWparam
+     * @param mrePK of size param.w, MREpk 
+     * @param seed seed for generating A1 and b, not published
+     * @param exp_seed seed for generating random matrix, published in the clue
+     * @param partySize party size
+     * @param partialSize partial size
+     * @return MREPublicKey 
+     */
+    MREPublicKey MREgeneratePK(const PVWParam& param, vector<MREpk>& mrePK, prng_seed_type& seed, prng_seed_type& exp_seed, const int partySize = party_size_glb,
+                               const int partialSize = partial_size_glb) {
         auto mrerng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
         RandomToStandardAdapter engine(mrerng->create());
-        std::uniform_int_distribution<std::mt19937::result_type> dist(0, 65536);
+        std::uniform_int_distribution<std::mt19937::result_type> dist(0, param.q-1);
 
         vector<MREgroupPK> groupPK(param.m);
-
         for (int w = 0; w < param.m; w++) {
-            NativeVector A(param.n), b(param.ell);
-            vector<vector<int>> rhs(param.ell * partySize), lhs(param.ell * partySize);
+            NativeVector A(param.n - partialSize + param.ell * partySize), b(param.ell);
+            vector<vector<int>> rhs(param.ell * partySize), lhs(param.ell * partySize), old_shared_sk(param.ell * partySize);
 
             for (int i = 0; i < param.ell * partySize; i++) {
                 rhs[i].resize(1);
@@ -153,24 +170,26 @@ namespace mre {
             }
 
             for (int i = 0; i < param.ell * partySize; i++) {
-                lhs[i].resize(partialSize);
+                old_shared_sk[i].resize(partialSize);
 
                 for (int j = 0; j < partialSize; j++) {
                     int party_ind = i / param.ell;
                     int ell_ind = i % param.ell;
 
-                    lhs[i][j] = mrePK[w].shareSK[party_ind][ell_ind][j].ConvertToInt();
+                    old_shared_sk[i][j] = mrePK[w].shareSK[party_ind][ell_ind][j].ConvertToInt();
                 }
             }
 
+            vector<vector<int>> extended_shared_sk = generateExponentialExtendedVector(param, old_shared_sk, partySize);
+            lhs = compressVector(param, exp_seed, extended_shared_sk, partySize * param.ell);
             vector<vector<long>> res = equationSolvingRandom(lhs, rhs, -1);
-
-            int i = 0;
+            
+            int i = 0, j = 0;
             for (; i < param.n - partialSize; i++) {
                 A[i] = dist(engine) % param.q;
             }
-            for (; i < param.n; i++) {
-                A[i] = res[i - param.n + partialSize][0];
+            for (; j < res.size(); i++, j++) {
+                A[i] = res[j][0];
             }
             for (int i = 0; i < param.ell; i++) {
                 b[i] = dist(engine) % param.q;
@@ -181,17 +200,40 @@ namespace mre {
         return MREPublicKey(groupPK, mrePK);
     }
 
-    bool verifyPK(const PVWParam& param, const MREgroupPK& groupPK, const vector<NativeVector>& b_prime, const vector<MREsharedSK>& recipientPK,
-                const int partialSize = 40) {
-        for (int r = 0; r < recipientPK.size(); r++) {
-            for (int l = 0; l < param.ell; l++) {
-                long b_temp = 0;
-                for (int i = 0; i < param.n; i++) {
-                    if (i >= param.n - partialSize) {
-                        b_temp = (b_temp + groupPK.A[i].ConvertToInt() * recipientPK[r][l][i - param.n + partialSize].ConvertToInt()) % param.q;
-                    }
+    bool verifyPK(const PVWParam& param, prng_seed_type& exp_seed, const MREgroupPK& groupPK, const vector<NativeVector>& b_prime, const vector<MREsharedSK>& recipientPK,
+                  const int partialSize = partial_size_glb, const int partySize = party_size_glb) {
+
+        vector<vector<int>> shared_SK(param.ell * partySize);
+        for (int i = 0; i < shared_SK.size(); i++) {
+            shared_SK[i].resize(partialSize);
+            for (int j = 0; j < partialSize; j++) {
+                int party_ind = i / param.ell;
+                int ell_ind = i % param.ell;
+                shared_SK[i][j] = recipientPK[party_ind][ell_ind][j].ConvertToInt();
+            }
+        }
+
+        vector<vector<int>> extended_shared_sk = generateExponentialExtendedVector(param, shared_SK, partySize);
+        vector<vector<uint64_t>> random_matrix = generateRandomMatrixWithSeed(param, exp_seed, partialSize * partySize, partySize * param.ell);
+
+        vector<int> extended_A(partialSize * partySize);
+        for (int i=0; i<extended_A.size(); i++) {
+            long temp = 0;
+            for (int j=0; j<partySize * param.ell; j++) {
+                temp = (temp + random_matrix[i][j] * groupPK.A[j + param.n - partialSize].ConvertToInt()) % param.q;
+                temp = temp < 0 ? temp + param.q : temp;
+            }
+            extended_A[i] = temp;
+        }
+
+        for (int r=0; r<partySize; r++) {
+            for (int l=0; l<param.ell; l++) {
+                long temp =0;
+                for (int i=0; i<extended_A.size(); i++) {
+                    temp = (temp + extended_A[i] * extended_shared_sk[r * param.ell + l][i]) % param.q;
+                    temp = temp < 0 ? temp + param.q : temp;
                 }
-                if (b_prime[r][l] != b_temp) {
+                if (b_prime[r][l] != temp) {
                     return false;
                 }
             }
@@ -200,7 +242,8 @@ namespace mre {
         return true;
     }
 
-    void MREEncPK(PVWCiphertext& ct, const vector<int>& msg, const MREPublicKey& pk, const PVWParam& param) {
+    void MREEncPK(PVWCiphertext& ct, const vector<int>& msg, const MREPublicKey& pk, const PVWParam& param, prng_seed_type& exp_seed, const int partialSize = partial_size_glb,
+                  const int partySize = party_size_glb) {
         prng_seed_type seed;
         for (auto &i : seed) {
             i = random_uint64();
@@ -211,15 +254,14 @@ namespace mre {
         uniform_int_distribution<uint64_t> dist(0, 1);
 
         NativeInteger q = param.q;
-        ct.a = NativeVector(param.n);
+        ct.a = NativeVector(param.n - partialSize + param.ell * partySize);
         ct.b = NativeVector(param.ell);
         for(size_t i = 0; i < pk.groupPK.size(); i++){
-            if (!verifyPK(param, pk.groupPK[i], pk.recipientPK[i].b_prime, pk.recipientPK[i].shareSK)) {
-                // cout << "skip " << i << endl;
+            if (!verifyPK(param, exp_seed, pk.groupPK[i], pk.recipientPK[i].b_prime, pk.recipientPK[i].shareSK)) {
                 continue;
             }
             if (dist(engine)){
-                for(int j = 0; j < param.n; j++){
+                for(int j = 0; j < pk.groupPK[i].A.GetLength(); j++){
                     ct.a[j].ModAddFastEq(pk.groupPK[i].A[j], q);
                 }
                 for(int j = 0; j < param.ell; j++){

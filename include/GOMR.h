@@ -1494,14 +1494,12 @@ void GOMR1_FG() {
     }
 
     auto params = PVWParam(450 + partial_size_glb, 65537, 1.3, 16000, 4);
-    vector<fgomr::FixedGroupSecretKey> groupSK = fgomr::secretKeyGen(params);
-    fgomr::FixedGroupSharedKey partialPK = fgomr::groupKeyGenAux(params, groupSK, mreseed);
-    fgomr::FixedGroupPublicKey groupPK = fgomr::keyGen(params, partialPK, mreseed);
+    auto sk = PVWGenerateSecretKey(params);
     cout << "Finishing generating pk for targeted recipient group\n";
 
     // step 2. prepare transactions
     vector<int> pertinentMsgIndices;
-    auto expected = preparingMREGroupClue(pertinentMsgIndices, groupPK, numOfTransactions, num_of_pertinent_msgs_glb, params, mreseed);
+    auto expected = preparingMREGroupClue(pertinentMsgIndices, numOfTransactions, num_of_pertinent_msgs_glb, params, sk, mreseed);
     cout << expected.size() << " pertinent msg: Finishing preparing messages with indices: " << pertinentMsgIndices << endl;
 
     // step 3. generate detection key
@@ -1536,8 +1534,7 @@ void GOMR1_FG() {
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    // w.l.o.g, use the first member in the group to test, ideally, any one should be able to detect same pertinent messages
-    fgomr::FixedGroupDetectionKey switchingKey = fgomr::generateDetectionKey(params, context, poly_modulus_degree, public_key, secret_key, groupSK[4]);
+    fgomr::FixedGroupDetectionKey switchingKey = fgomr::generateDetectionKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
     Ciphertext packedSIC;
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
@@ -1572,7 +1569,7 @@ void GOMR1_FG() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
+    vector<int> steps_next = {0,32,64,128,256,512};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
 
     //////////////////////////////////////
@@ -1613,9 +1610,9 @@ void GOMR1_FG() {
         while(j < numOfTransactions/numcores/poly_modulus_degree) {
             if (!i)
                 cout << "Phase 1, Core " << i << ", Batch " << j << endl;
-            loadClues(SICPVW_multicore[i], counter[i], counter[i]+poly_modulus_degree, params);
+            loadFixedGroupClues(SICPVW_multicore[i], counter[i], counter[i]+poly_modulus_degree, params);
             packedSICfromPhase1[i][j] = serverOperations1obtainPackedSIC(SICPVW_multicore[i], switchingKey, relin_keys, gal_keys,
-                                                            poly_modulus_degree, context, params, poly_modulus_degree);
+                                                            poly_modulus_degree, context, params, poly_modulus_degree, partial_size_glb);
             j++;
             counter[i] += poly_modulus_degree;
             SICPVW_multicore[i].clear();
@@ -1705,14 +1702,12 @@ void GOMR2_FG() {
     }
 
     auto params = PVWParam(450 + partial_size_glb, 65537, 1.3, 16000, 4);
-    vector<fgomr::FixedGroupSecretKey> groupSK = fgomr::secretKeyGen(params);
-    fgomr::FixedGroupSharedKey partialPK = fgomr::groupKeyGenAux(params, groupSK, mreseed);
-    fgomr::FixedGroupPublicKey groupPK = fgomr::keyGen(params, partialPK, mreseed);
+    auto sk = PVWGenerateSecretKey(params);
     cout << "Finishing generating pk for targeted recipient group\n";
 
     // step 2. prepare transactions
     vector<int> pertinentMsgIndices;
-    auto expected = preparingMREGroupClue(pertinentMsgIndices, groupPK, numOfTransactions, num_of_pertinent_msgs_glb, params, mreseed);
+    auto expected = preparingMREGroupClue(pertinentMsgIndices, numOfTransactions, num_of_pertinent_msgs_glb, params, sk, mreseed);
     cout << expected.size() << " pertinent msg: Finishing preparing messages with indices: " << pertinentMsgIndices << endl;
 
     // step 3. generate detection key
@@ -1747,8 +1742,7 @@ void GOMR2_FG() {
     Decryptor decryptor(context, secret_key);
     BatchEncoder batch_encoder(context);
 
-    // w.l.o.g, use the first member in the group to test, ideally, any one should be able to detect same pertinent messages
-    fgomr::FixedGroupDetectionKey switchingKey = fgomr::generateDetectionKey(params, context, poly_modulus_degree, public_key, secret_key, groupSK[4]);
+    fgomr::FixedGroupDetectionKey switchingKey = fgomr::generateDetectionKey(context, poly_modulus_degree, public_key, secret_key, sk, params);
     Ciphertext packedSIC;
 
     vector<vector<PVWCiphertext>> SICPVW_multicore(numcores);
@@ -1783,10 +1777,12 @@ void GOMR2_FG() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512,1024,2048,4096,8192};
+    vector<int> steps_next = {0,32,64,128,256,512};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
-
     //////////////////////////////////////
+    PublicKey public_key_last;
+    keygen_next.create_public_key(public_key_last);
+
     vector<Modulus> coeff_modulus_last = coeff_modulus;
     coeff_modulus_last.erase(coeff_modulus_last.begin() + 3, coeff_modulus_last.end()-1);
     EncryptionParameters parms_last = parms;
@@ -1803,9 +1799,6 @@ void GOMR2_FG() {
     vector<int> steps_last = {1,2,4,8,16};
     KeyGenerator keygen_last(context_last, sk_last);
     keygen_last.create_galois_keys(steps, gal_keys_last);
-    //////////////////////////////////////
-    PublicKey public_key_last;
-    keygen_next.create_public_key(public_key_last);
     //////////////////////////////////////
 
     vector<vector<Ciphertext>> packedSICfromPhase1(numcores,vector<Ciphertext>(numOfTransactions/numcores/poly_modulus_degree)); // Assume numOfTransactions/numcores/poly_modulus_degree is integer, pad if needed
@@ -1827,9 +1820,9 @@ void GOMR2_FG() {
         while(j < numOfTransactions/numcores/poly_modulus_degree) {
             if (!i)
                 cout << "Phase 1, Core " << i << ", Batch " << j << endl;
-            loadClues(SICPVW_multicore[i], counter[i], counter[i]+poly_modulus_degree, params);
+            loadFixedGroupClues(SICPVW_multicore[i], counter[i], counter[i]+poly_modulus_degree, params);
             packedSICfromPhase1[i][j] = serverOperations1obtainPackedSIC(SICPVW_multicore[i], switchingKey, relin_keys, gal_keys,
-                                                            poly_modulus_degree, context, params, poly_modulus_degree);
+                                                            poly_modulus_degree, context, params, poly_modulus_degree, partial_size_glb);
             j++;
             counter[i] += poly_modulus_degree;
             SICPVW_multicore[i].clear();

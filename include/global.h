@@ -19,8 +19,7 @@ size_t num_of_pertinent_msgs_glb = 1;
 int party_size_glb = 12;
 int id_size_glb = 8;
 int repetition_glb = 16;
-int partial_size_glb = 40;
-vector<int> extended_id_glb(id_size_glb * party_size_glb);
+int partial_size_glb = 8;
 
 vector<uint64_t> expectedIndices;
 

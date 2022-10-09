@@ -5,6 +5,7 @@
 #include "retrieval.h"
 #include "client.h"
 #include "LoadAndSaveUtils.h"
+#include "MathUtil.h"
 #include "OMRUtil.h"
 #include "global.h"
 #include "Scheme.h"
@@ -27,7 +28,7 @@ void choosePertinentMsg(int numOfTransactions, int pertinentMsgNum, vector<int>&
         pertinentMsgIndices.push_back(temp);
     }
     sort(pertinentMsgIndices.begin(), pertinentMsgIndices.end());
-    // pertinentMsgIndices.push_back(100);
+    // pertinentMsgIndices.push_back(0);
 
     cout << "Expected Message Indices: " << pertinentMsgIndices << endl;
 }
@@ -76,11 +77,11 @@ vector<vector<uint64_t>> preparingTransactionsFormal(vector<int>& pertinentMsgIn
 // Phase 1, obtaining PV's
 Ciphertext serverOperations1obtainPackedSIC(vector<PVWCiphertext>& SICPVW, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
                             const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context, const PVWParam& params,
-                            const int numOfTransactions) {
+                            const int numOfTransactions, const int partialSize = 0) {
     Evaluator evaluator(context);
     
     vector<Ciphertext> packedSIC(params.ell);
-    computeBplusASPVWOptimized(packedSIC, SICPVW, switchingKey, gal_keys, context, params);
+    computeBplusASPVWOptimized(packedSIC, SICPVW, switchingKey, gal_keys, context, params, partialSize);
 
     int rangeToCheck = 850; // range check is from [-rangeToCheck, rangeToCheck-1]
     newRangeCheckPVW(packedSIC, rangeToCheck, relin_keys, degree, context, params);
@@ -460,9 +461,6 @@ vector<vector<int>> initializeRecipientId(const PVWParam& params, int partySize,
  * @return true/false
  */
 bool verify(const PVWParam& params, const vector<int>& extended_id, int index, int partySize = party_size_glb, bool prepare = false) {
-    for (int i=0; i< extended_id_glb.size(); i++) {
-        extended_id_glb[i] = extended_id[i];
-    }
     prng_seed_type seed;
     vector<uint64_t> polyFlat = loadDataSingle(index, "cluePoly", (params.n + params.ell) * partySize + prng_seed_uint64_count);
     int prng_seed_uint64_counter = 0;
@@ -543,37 +541,43 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
     }
 }
 
-
 // similar to preparingTransactionsFormal but for fixed group GOMR which requires a MREgroupPK for each message.
-vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices, fgomr::FixedGroupPublicKey& pk, int numOfTransactions,
-                           int pertinentMsgNum, const PVWParam& params, prng_seed_type& seed) {
+// pertinentMsgIndices, groupPK, numOfTransactions, num_of_pertinent_msgs_glb, params, mreseed);
+vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices, int numOfTransactions, int pertinentMsgNum, const PVWParam& params, const PVWsk& targetSK,
+                                               prng_seed_type& seed, const int partialSize = partial_size_glb, const int partySize = party_size_glb) {
 
     vector<vector<uint64_t>> ret;
     vector<int> zeros(params.ell, 0);
+    PVWsk sk;
+    vector<fgomr::FixedGroupSecretKey> groupSK;
+    fgomr::FixedGroupSharedKey partialPK;
+    fgomr::FixedGroupPublicKey groupPK;
 
     choosePertinentMsg(numOfTransactions, pertinentMsgNum, pertinentMsgIndices, seed);
 
-    prng_seed_type mreseed;
-    for (auto &i : mreseed) {
+    prng_seed_type mreseed, expseed;
+    for (auto &i : mreseed) { // the seed to randomly sample A1, and b in secret key
         i = random_uint64();
     }
     for(int i = 0; i < numOfTransactions; i++){
         PVWCiphertext tempclue;
 
-        if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
-            tempclue = fgomr::genClue(params, zeros, pk);
-            ret.push_back(loadDataSingle(i));
-        } else {
-            // vector<MREsk> groupSK = MREgenerateSK(params);
-            // vector<MREpk> partialPK = MREgeneratePartialPK(params, groupSK, mreseed);
-            // MREPublicKey groupPK = MREgeneratePK(params, partialPK, mreseed);
-            // MREEncPK(tempclue, zeros, groupPK, params);
-
-            auto sk2 = PVWGenerateSecretKey(params);
-            PVWEncSK(tempclue, zeros, sk2, params);
+        for (auto &i : expseed) { // the seed to perform exponential extension for the sharedSK
+            i = random_uint64();
         }
-
-        saveClues(tempclue, i);
+        if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
+            groupSK = fgomr::secretKeyGen(params, targetSK);
+            partialPK = fgomr::groupKeyGenAux(params, groupSK, mreseed);
+            groupPK = fgomr::keyGen(params, partialPK, mreseed, expseed);
+            tempclue = fgomr::genClue(params, zeros, groupPK, expseed);
+            ret.push_back(loadDataSingle(i));
+            saveCluesWithRandomness(tempclue, i, expseed);
+        } else {
+            auto non_pert_params = PVWParam(params.n - partialSize + partySize * params.ell, params.q, params.std_dev, params.m, params.ell);
+            sk = PVWGenerateSecretKey(non_pert_params);
+            PVWEncSK(tempclue, zeros, sk, non_pert_params);
+            saveCluesWithRandomness(tempclue, i, expseed);
+        }  
     }
 
     return ret;

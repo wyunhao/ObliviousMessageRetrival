@@ -1,6 +1,7 @@
 #include "MRE.h"
 #include "client.h"
 #include "OMRUtil.h"
+#include "MathUtil.h"
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -50,7 +51,7 @@ namespace omr
                 if(int(tempindex) >= params.n) {
                     skInt[i] = 0;
                 } else {
-                    skInt[i] = uint64_t(regSk[j][tempindex].ConvertToInt() % 65537);
+                    skInt[i] = uint64_t(regSk[j][tempindex].ConvertToInt() % params.q);
                 }
             }
             Plaintext plaintext;
@@ -153,91 +154,66 @@ namespace fgomr
     typedef vector<Ciphertext> FixedGroupDetectionKey;
     // typedef PVWCiphertext FGClue;
 
-    vector<FixedGroupSecretKey> secretKeyGen(const PVWParam& params) {
-        return mre::MREgenerateSK(params);
-    }
-
-    // take MRE sk's and output switching key, which is a ciphertext of size \ell*n, where n is the PVW secret key dimension (enlarged under MRE requirement)
-    FixedGroupDetectionKey generateDetectionKey(const PVWParam& params, const SEALContext& context, const size_t& degree, 
-                                                const PublicKey& pk, const SecretKey& sk, const FixedGroupSecretKey& regSk) {
-        
-        BatchEncoder batch_encoder(context);
-        Encryptor encryptor(context, pk);
-        FixedGroupDetectionKey switchingKey(params.ell);
-
-        // Use symmetric encryption to enable seed mode to reduce the detection key size
-        encryptor.set_secret_key(sk);
-
-        int tempn = 1;
-        for (tempn = 1; tempn < params.n; tempn *= 2) {}
-        for (int j = 0; j < params.ell; j++) {
-            // encrypt into ell BFV ciphertexts
-            vector<uint64_t> skInt(degree);
-            for (size_t i = 0; i < degree; i++) {
-                auto tempindex = i % uint64_t(tempn);
-                if (int(tempindex) >= params.n) {
-                    skInt[i] = 0;
-                } else {
-                    if (tempindex < params.n - partial_size_glb) {
-                        skInt[i] = uint64_t(regSk.secretSK[j][tempindex].ConvertToInt() % params.q);
-                    } else {
-                        skInt[i] = uint64_t(regSk.shareSK[j][tempindex - params.n + partial_size_glb].ConvertToInt() % params.q);
-                    }
-                }
-            }
-            Plaintext plaintext;
-            batch_encoder.encode(skInt, plaintext);
-            encryptor.encrypt_symmetric(plaintext, switchingKey[j]);
-        }
-
-        return switchingKey;
+    vector<FixedGroupSecretKey> secretKeyGen(const PVWParam& params, const PVWsk& targetSK) {
+        return mre::MREgenerateSK(params, targetSK);
     }
 
     FixedGroupSharedKey groupKeyGenAux(const PVWParam& params, vector<FixedGroupSecretKey>& mreSK, prng_seed_type& seed) {
         return mre::MREgeneratePartialPK(params, mreSK, seed);
     } 
 
-    FixedGroupPublicKey keyGen(const PVWParam& params, FixedGroupSharedKey& mrePK, prng_seed_type& seed, const int partySize = 8, const int partialSize = 40) {
-        return mre::MREgeneratePK(params, mrePK, seed, partySize, partialSize);
+    FixedGroupPublicKey keyGen(const PVWParam& params, FixedGroupSharedKey& mrePK, prng_seed_type& seed, prng_seed_type& exp_seed, const int partySize = party_size_glb,
+                               const int partialSize = partial_size_glb) {
+        return mre::MREgeneratePK(params, mrePK, seed, exp_seed, partySize, partialSize);
     }
 
-    PVWCiphertext genClue(const PVWParam& param, const vector<int>& msg, const FixedGroupPublicKey& pk) {
-        chrono::high_resolution_clock::time_point time_start, time_end;
-        chrono::microseconds time_diff;
-        time_start = chrono::high_resolution_clock::now();
+    PVWCiphertext genClue(const PVWParam& param, const vector<int>& msg, const FixedGroupPublicKey& pk, prng_seed_type& exp_seed) {
         PVWCiphertext ct;
-        prng_seed_type seed;
-        for (auto &i : seed) {
-            i = random_uint64();
-        }
-
-        auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
-        RandomToStandardAdapter engine(rng->create());
-        uniform_int_distribution<uint64_t> dist(0, 1);
-
-        NativeInteger q = param.q;
-        ct.a = NativeVector(param.n);
-        ct.b = NativeVector(param.ell);
-        for(size_t i = 0; i < pk.groupPK.size(); i++){
-            if (!verifyPK(param, pk.groupPK[i], pk.recipientPK[i].b_prime, pk.recipientPK[i].shareSK)) {
-                continue;
-            }
-            if (dist(engine)){
-                for(int j = 0; j < param.n; j++){
-                    ct.a[j].ModAddFastEq(pk.groupPK[i].A[j], q);
-                }
-                for(int j = 0; j < param.ell; j++){
-                    ct.b[j].ModAddFastEq(pk.groupPK[i].b[j], q);
-                }
-            }
-        }
-        for(int j = 0; j < param.ell; j++){
-            msg[j]? ct.b[j].ModAddFastEq(3*q/4, q) : ct.b[j].ModAddFastEq(q/4, q);
-        }
-
-        time_end = chrono::high_resolution_clock::now();
-        time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-        cout << "\nClue generation for one message: " << time_diff.count() << "us." << "\n";
+        mre::MREEncPK(ct, msg, pk, param, exp_seed);
         return ct;
+    }
+
+    FixedGroupDetectionKey generateDetectionKey(const SEALContext& context, const size_t& degree, const PublicKey& BFVpk, const SecretKey& BFVsk,
+                                            const PVWsk& regSk, const PVWParam& params, const int partialSize = partial_size_glb, const int partySize = party_size_glb) { 
+        FixedGroupDetectionKey switchingKey(params.ell);
+
+        BatchEncoder batch_encoder(context);
+        Encryptor encryptor(context, BFVpk);
+        encryptor.set_secret_key(BFVsk);
+
+        int a1_size = params.n - partialSize, a2_size = partialSize * partySize;
+
+        int tempn = 1;
+        for(tempn = 1; tempn < a1_size + a2_size; tempn *= 2){}
+
+        vector<vector<int>> old_a2(params.ell);
+        for (int i = 0; i < old_a2.size(); i++) {
+            old_a2[i].resize(partialSize);
+
+            for (int j = 0; j < partialSize; j++) {
+                old_a2[i][j] = regSk[i][params.n - partialSize + j].ConvertToInt();
+            }
+        }
+        vector<vector<int>> extended_a2 = generateExponentialExtendedVector(params, old_a2);
+
+        for(int j = 0; j < params.ell; j++){
+            vector<uint64_t> skInt(degree);
+            for(size_t i = 0; i < degree; i++){
+                auto tempindex = i % uint64_t(tempn);
+                if (int (tempindex) >= a1_size + a2_size) {
+                    skInt[i] = 0;
+                } else if (int (tempindex) < a1_size) { // a1 part 
+                    skInt[i] = uint64_t(regSk[j][tempindex].ConvertToInt() % params.q);
+                } else { // a2 part
+                    skInt[i] = extended_a2[j][tempindex - a1_size];
+                }
+            }
+
+            Plaintext plaintext;
+            batch_encoder.encode(skInt, plaintext);
+            encryptor.encrypt_symmetric(plaintext, switchingKey[j]);
+        }
+
+        return switchingKey;
     }
 }
