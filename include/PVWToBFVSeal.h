@@ -310,30 +310,33 @@ void computeBplusASPVWOptimized(vector<Ciphertext>& output, const vector<PVWCiph
     }
 
     for(int i = 0; i < tempn; i++){
-        vector<uint64_t> vectorOfInts(toPack.size());
-        for(int j = 0; j < toPack.size(); j++){
-            int the_index = (i + j) % tempn;
-            if(the_index >= sk_size) {
-                vectorOfInts[j] = 0;
-            } else {
-                vectorOfInts[j] = uint64_t((toPack[j].a[the_index].ConvertToInt()));
+        for(int l = 0; l < param.ell; l++){
+            vector<uint64_t> vectorOfInts(toPack.size());
+            for(int j = 0; j < toPack.size(); j++){
+                int the_index = (i + j) % tempn;
+                if(the_index >= sk_size) {
+                    vectorOfInts[j] = 0;
+                } else if (the_index >= param.n - partialSize) {// load extended_A part
+                    the_index += l * partialSize * partySize;
+                    vectorOfInts[j] = uint64_t((toPack[j].a[the_index].ConvertToInt()));
+                } else {
+                    vectorOfInts[j] = uint64_t((toPack[j].a[the_index].ConvertToInt()));
+                }
             }
-        }
 
-        Plaintext plaintext;
-        batch_encoder.encode(vectorOfInts, plaintext);
+            Plaintext plaintext;
+            batch_encoder.encode(vectorOfInts, plaintext);
         
-        for(int j = 0; j < param.ell; j++){
             if(i == 0){
-                evaluator.multiply_plain(switchingKey[j], plaintext, output[j]); // times s[i]
+                evaluator.multiply_plain(switchingKey[l], plaintext, output[l]); // times s[i]
             }
             else{
                 Ciphertext temp;
-                evaluator.multiply_plain(switchingKey[j], plaintext, temp);
-                evaluator.add_inplace(output[j], temp);
+                evaluator.multiply_plain(switchingKey[l], plaintext, temp);
+                evaluator.add_inplace(output[l], temp);
             }
             // rotate one slot at a time
-            evaluator.rotate_rows_inplace(switchingKey[j], 1, gal_keys);
+            evaluator.rotate_rows_inplace(switchingKey[l], 1, gal_keys);
         }
     }
 

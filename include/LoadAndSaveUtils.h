@@ -214,7 +214,7 @@ void loadOMClueWithRandomness(const PVWParam& params, vector<vector<uint64_t>>& 
 
 void loadFixedGroupClues(vector<PVWCiphertext>& clues, const int& start, const int& end, const PVWParam& param, const int partySize = party_size_glb, const int partialSize = partial_size_glb){
     clues.resize(end-start);
-    int a1_size = param.n - partialSize, old_a2_size = param.ell * partySize, new_a2_size = partialSize * partySize;
+    int a1_size = param.n - partialSize, old_a2_size = param.ell * partySize, new_a2_size = param.ell * partialSize * partySize;
 
     vector<int> old_a2(old_a2_size);
     vector<uint64_t> randomness(prng_seed_uint64_count);
@@ -256,14 +256,17 @@ void loadFixedGroupClues(vector<PVWCiphertext>& clues, const int& start, const i
             prng_seed_uint64_counter++;
         }
 
-        vector<vector<uint64_t>> random_matrix = generateRandomMatrixWithSeed(param, seed, new_a2_size, old_a2_size);
-        for (int c = 0; c < new_a2_size; c++) {
-            long temp = 0;
-            for (int k = 0; k < old_a2_size; k++) {
-                temp = (temp + old_a2[k] * random_matrix[c][k]) % param.q;
-                temp = temp < 0 ? temp + param.q : temp;
+        vector<vector<uint64_t>> random_matrix = generateRandomMatrixWithSeed(param, seed, partialSize * partySize, partySize);
+
+        for (int l = 0; l < param.ell; l++) {
+            for (int c = 0; c < partialSize * partySize; c++) {
+                long temp = 0;
+                for (int k = 0; k < partySize; k++) {
+                    temp = (temp + old_a2[l * partySize + k] * random_matrix[c][k]) % param.q;
+                    temp = temp < 0 ? temp + param.q : temp;
+                }
+                clues[i-start].a[l * partySize * partialSize + c + a1_size] = temp;
             }
-            clues[i-start].a[c + a1_size] = temp;
         }
     }
 }

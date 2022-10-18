@@ -159,41 +159,39 @@ namespace mre {
         vector<MREgroupPK> groupPK(param.m);
         for (int w = 0; w < param.m; w++) {
             NativeVector A(param.n - partialSize + param.ell * partySize), b(param.ell);
-            vector<vector<int>> rhs(param.ell * partySize), lhs(param.ell * partySize), old_shared_sk(param.ell * partySize);
+            vector<vector<int>> rhs(partySize), lhs(partySize), old_shared_sk(partySize);
+            vector<vector<vector<long>>> res(param.ell);
 
-            for (int i = 0; i < param.ell * partySize; i++) {
-                rhs[i].resize(1);
+            for (int i = 0; i < param.ell; i++) {
+                for (int p = 0; p < partySize; p++) {
+                    rhs[p].resize(1);
+                    rhs[p][0] = mrePK[w].b_prime[p][i].ConvertToInt();
 
-                int party_ind = i / param.ell;
-                int ell_ind = i % param.ell;
-                rhs[i][0] = mrePK[w].b_prime[party_ind][ell_ind].ConvertToInt();
-            }
+                    old_shared_sk[p].resize(partialSize);
 
-            for (int i = 0; i < param.ell * partySize; i++) {
-                old_shared_sk[i].resize(partialSize);
-
-                for (int j = 0; j < partialSize; j++) {
-                    int party_ind = i / param.ell;
-                    int ell_ind = i % param.ell;
-
-                    old_shared_sk[i][j] = mrePK[w].shareSK[party_ind][ell_ind][j].ConvertToInt();
+                    for (int j = 0; j < partialSize; j++) {
+                        old_shared_sk[p][j] = mrePK[w].shareSK[p][i][j].ConvertToInt();
+                    }
                 }
+
+                vector<vector<int>> extended_shared_sk = generateExponentialExtendedVector(param, old_shared_sk, partySize);
+                lhs = compressVector(param, exp_seed, extended_shared_sk, partySize);
+                res[i] = equationSolvingRandom(lhs, rhs, -1);
             }
 
-            vector<vector<int>> extended_shared_sk = generateExponentialExtendedVector(param, old_shared_sk, partySize);
-            lhs = compressVector(param, exp_seed, extended_shared_sk, partySize * param.ell);
-            vector<vector<long>> res = equationSolvingRandom(lhs, rhs, -1);
-            
             int i = 0, j = 0;
             for (; i < param.n - partialSize; i++) {
                 A[i] = dist(engine) % param.q;
             }
-            for (; j < res.size(); i++, j++) {
-                A[i] = res[j][0];
+            for (; j < param.ell * partySize; i++, j++) {
+                int ell_ind = j / partySize;
+                int party_ind = j % partySize; 
+                A[i] = res[ell_ind][party_ind][0];
             }
             for (int i = 0; i < param.ell; i++) {
                 b[i] = dist(engine) % param.q;
             }
+
             groupPK[w] = MREgroupPK(A, b);
         }
 
@@ -203,34 +201,32 @@ namespace mre {
     bool verifyPK(const PVWParam& param, prng_seed_type& exp_seed, const MREgroupPK& groupPK, const vector<NativeVector>& b_prime, const vector<MREsharedSK>& recipientPK,
                   const int partialSize = partial_size_glb, const int partySize = party_size_glb) {
 
-        vector<vector<int>> shared_SK(param.ell * partySize);
-        for (int i = 0; i < shared_SK.size(); i++) {
-            shared_SK[i].resize(partialSize);
-            for (int j = 0; j < partialSize; j++) {
-                int party_ind = i / param.ell;
-                int ell_ind = i % param.ell;
-                shared_SK[i][j] = recipientPK[party_ind][ell_ind][j].ConvertToInt();
-            }
-        }
-
-        vector<vector<int>> extended_shared_sk = generateExponentialExtendedVector(param, shared_SK, partySize);
-        vector<vector<uint64_t>> random_matrix = generateRandomMatrixWithSeed(param, exp_seed, partialSize * partySize, partySize * param.ell);
-
+        vector<vector<uint64_t>> random_matrix = generateRandomMatrixWithSeed(param, exp_seed, partialSize * partySize, partySize);;
+        vector<vector<int>> shared_SK(partySize), extended_shared_sk;
         vector<int> extended_A(partialSize * partySize);
-        for (int i=0; i<extended_A.size(); i++) {
-            long temp = 0;
-            for (int j=0; j<partySize * param.ell; j++) {
-                temp = (temp + random_matrix[i][j] * groupPK.A[j + param.n - partialSize].ConvertToInt()) % param.q;
-                temp = temp < 0 ? temp + param.q : temp;
+        for (int l = 0; l < param.ell; l++) {
+            for (int p = 0; p < partySize; p++) {
+                shared_SK[p].resize(partialSize);
+                for (int j = 0; j < partialSize; j++) {
+                    shared_SK[p][j] = recipientPK[p][l][j].ConvertToInt();
+                }
             }
-            extended_A[i] = temp;
-        }
 
-        for (int r=0; r<partySize; r++) {
-            for (int l=0; l<param.ell; l++) {
+            extended_shared_sk = generateExponentialExtendedVector(param, shared_SK, partySize);
+
+            for (int i = 0; i < extended_A.size(); i++) {
+                long temp = 0;
+                for (int j = 0; j < partySize; j++) {
+                    temp = (temp + random_matrix[i][j] * groupPK.A[l * partySize + j + param.n - partialSize].ConvertToInt()) % param.q;
+                    temp = temp < 0 ? temp + param.q : temp;
+                }
+                extended_A[i] = temp;
+            }
+
+            for (int r = 0; r < partySize; r++) {
                 long temp =0;
-                for (int i=0; i<extended_A.size(); i++) {
-                    temp = (temp + extended_A[i] * extended_shared_sk[r * param.ell + l][i]) % param.q;
+                for (int i = 0; i < extended_A.size(); i++) {
+                    temp = (temp + extended_A[i] * extended_shared_sk[r][i]) % param.q;
                     temp = temp < 0 ? temp + param.q : temp;
                 }
                 if (b_prime[r][l] != temp) {

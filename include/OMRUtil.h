@@ -566,12 +566,32 @@ vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices,
             i = random_uint64();
         }
         if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
+            chrono::high_resolution_clock::time_point time_start, time_end;
+            chrono::microseconds time_diff;
+            time_start = chrono::high_resolution_clock::now();
+
             groupSK = fgomr::secretKeyGen(params, targetSK);
+            time_end = chrono::high_resolution_clock::now();
+            time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+            cout << "\nsecretKeyGen time: " << time_diff.count() << "us." << "\n";
+            time_start = chrono::high_resolution_clock::now();
             partialPK = fgomr::groupKeyGenAux(params, groupSK, mreseed);
+            time_end = chrono::high_resolution_clock::now();
+            time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+            cout << "\ngroupKeyGenAux time: " << time_diff.count() << "us." << "\n";
+            time_start = chrono::high_resolution_clock::now();
             groupPK = fgomr::keyGen(params, partialPK, mreseed, expseed);
+            time_end = chrono::high_resolution_clock::now();
+            time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+            cout << "\nkeyGentime: " << time_diff.count() << "us." << "\n";
+            time_start = chrono::high_resolution_clock::now();
             tempclue = fgomr::genClue(params, zeros, groupPK, expseed);
             ret.push_back(loadDataSingle(i));
             saveCluesWithRandomness(tempclue, i, expseed);
+
+            time_end = chrono::high_resolution_clock::now();
+            time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+            cout << "\ngenClue time: " << time_diff.count() << "us." << "\n";
         } else {
             auto non_pert_params = PVWParam(params.n - partialSize + partySize * params.ell, params.q, params.std_dev, params.m, params.ell);
             sk = PVWGenerateSecretKey(non_pert_params);
