@@ -253,9 +253,9 @@ namespace mre {
         ct.a = NativeVector(param.n - partialSize + param.ell * partySize);
         ct.b = NativeVector(param.ell);
         for(size_t i = 0; i < pk.groupPK.size(); i++){
-            if (!verifyPK(param, exp_seed, pk.groupPK[i], pk.recipientPK[i].b_prime, pk.recipientPK[i].shareSK)) {
-                continue;
-            }
+            // if (!verifyPK(param, exp_seed, pk.groupPK[i], pk.recipientPK[i].b_prime, pk.recipientPK[i].shareSK)) {
+            //     continue;
+            // }
             if (dist(engine)){
                 for(int j = 0; j < pk.groupPK[i].A.GetLength(); j++){
                     ct.a[j].ModAddFastEq(pk.groupPK[i].A[j], q);
