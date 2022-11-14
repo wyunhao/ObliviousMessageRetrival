@@ -541,7 +541,7 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
     }
 }
 
-// similar to preparingTransactionsFormal but for fixed group GOMR which requires a MREgroupPK for each message.
+// similar to preparingTransactionsFormal but for fixed group GOMR which requires a MREGroupPK for each message.
 // pertinentMsgIndices, groupPK, numOfTransactions, num_of_pertinent_msgs_glb, params, mreseed);
 vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices, int numOfTransactions, int pertinentMsgNum, const PVWParam& params, const PVWsk& targetSK,
                                                prng_seed_type& seed, const int partialSize = partial_size_glb, const int partySize = party_size_glb) {
@@ -550,8 +550,8 @@ vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices,
     vector<int> zeros(params.ell, 0);
     PVWsk sk;
     vector<fgomr::FixedGroupSecretKey> groupSK;
-    fgomr::FixedGroupSharedKey partialPK;
-    fgomr::FixedGroupPublicKey groupPK;
+    fgomr::FixedGroupSharedKey gPK;
+    // fgomr::FixedGroupPublicKey groupPK;
 
     choosePertinentMsg(numOfTransactions, pertinentMsgNum, pertinentMsgIndices, seed);
 
@@ -567,9 +567,9 @@ vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices,
         }
         if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
             groupSK = fgomr::secretKeyGen(params, targetSK);
-            partialPK = fgomr::groupKeyGenAux(params, groupSK, mreseed);
-            groupPK = fgomr::keyGen(params, partialPK, mreseed, expseed);
-            tempclue = fgomr::genClue(params, zeros, groupPK, expseed);
+            gPK = fgomr::groupKeyGenAux(params, groupSK, mreseed);
+            // groupPK = fgomr::keyGen(params, partialPK, mreseed, expseed);
+            tempclue = fgomr::genClue(params, zeros, gPK, expseed);
             ret.push_back(loadDataSingle(i));
             saveCluesWithRandomness(tempclue, i, expseed);
         } else {

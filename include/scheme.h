@@ -148,11 +148,9 @@ namespace agomr
  */
 namespace fgomr
 {
-    typedef mre::MREPublicKey FixedGroupPublicKey;
-    typedef vector<mre::MREpk> FixedGroupSharedKey;
+    typedef mre::MREGroupPK FixedGroupSharedKey;
     typedef mre::MREsk FixedGroupSecretKey;
     typedef vector<Ciphertext> FixedGroupDetectionKey;
-    // typedef PVWCiphertext FGClue;
 
     vector<FixedGroupSecretKey> secretKeyGen(const PVWParam& params, const PVWsk& targetSK) {
         return mre::MREgenerateSK(params, targetSK);
@@ -162,14 +160,9 @@ namespace fgomr
         return mre::MREgeneratePartialPK(params, mreSK, seed);
     } 
 
-    FixedGroupPublicKey keyGen(const PVWParam& params, FixedGroupSharedKey& mrePK, prng_seed_type& seed, prng_seed_type& exp_seed, const int partySize = party_size_glb,
-                               const int partialSize = partial_size_glb) {
-        return mre::MREgeneratePK(params, mrePK, seed, exp_seed, partySize, partialSize);
-    }
-
-    PVWCiphertext genClue(const PVWParam& param, const vector<int>& msg, const FixedGroupPublicKey& pk, prng_seed_type& exp_seed) {
+    PVWCiphertext genClue(const PVWParam& param, const vector<int>& msg, const FixedGroupSharedKey& gpk, prng_seed_type& exp_seed) {
         PVWCiphertext ct;
-        mre::MREEncPK(ct, msg, pk, param, exp_seed);
+        mre::MREEncPK(ct, msg, gpk, param, exp_seed);
         return ct;
     }
 

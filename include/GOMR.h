@@ -1479,6 +1479,17 @@ void GOMR2_ObliviousMultiplexer_BFV() {
 //////////////////////////////////////////////////// Fixed Group Version Group OMR ///////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+/**
+ * @brief This is the Fixed Group OMR. The main difference from the ad-hoc versions above is that recipients here will pre-form groups by
+ * calling assistant functions in MRE.h.
+ * All recipients in the same group will share the same (A1, b) pairs, but compute different b_primes with each own secret_key. The
+ * groupKeyGen function will return all (A1, b, (b_prime)) pairs, together with the shared_secret_key of all recipients among the group.
+ * On the sender side, when it invokes the GenClue function, with a freshly drawn randomness, subsum of (A1, b, (b_prime)) will be calculated.
+ * subsum((b_prime)) and the shared_secret_key will be used to solve a linear transformation matrix, and the result will be our A2.
+ * A2, together with subsum(A1), subsum(b), we have our clue.
+ *
+ */
 void GOMR1_FG() {
     size_t poly_modulus_degree = poly_modulus_degree_glb;
 
@@ -1569,7 +1580,7 @@ void GOMR1_FG() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512};
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
 
     //////////////////////////////////////
@@ -1686,7 +1697,12 @@ void GOMR1_FG() {
         cout << "Overflow" << endl << res << endl;
 }
 
-
+/**
+ * @brief Based on GOMR1.
+ *
+ * The remaining logic follows as in GOMR1_FG.
+ *
+ */
 void GOMR2_FG() {
     size_t poly_modulus_degree = poly_modulus_degree_glb;
 
@@ -1777,7 +1793,7 @@ void GOMR2_FG() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512};
+    vector<int> steps_next = {0,32,64,128,256,512,1024,2048};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
     //////////////////////////////////////
     PublicKey public_key_last;
