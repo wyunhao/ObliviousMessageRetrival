@@ -503,6 +503,10 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
     vector<vector<int>> ids;
     vector<PVWCiphertext> clues;
     bool check = false;
+
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    uint64_t total_time = 0;
+
     for(int i = 0; i < numOfTransactions; i++) {
         while (true) {
             prng_seed_type seed;
@@ -510,6 +514,7 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
                 i = random_uint64();
             }
 
+            time_start = chrono::high_resolution_clock::now();
             if (find(pertinentMsgIndices.begin(), pertinentMsgIndices.end(), i) != pertinentMsgIndices.end()) {
                 check = true;
                 ids = initializeRecipientId(params, party_size_glb - 1, id_size_glb);
@@ -525,6 +530,10 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
             vector<vector<int>> extended_ids = generateExponentialExtendedVector(params, ids, partySize);
             vector<vector<int>> compressed_ids = compressVector(params, seed, extended_ids);
             vector<vector<long>> cluePolynomial = agomr::generateClue(params, clues, compressed_ids, prepare);
+
+            time_end = chrono::high_resolution_clock::now();
+            total_time += chrono::duration_cast<chrono::microseconds>(time_end - time_start).count();
+
             saveGroupClues(cluePolynomial, seed, i);
 
             if (check) {
@@ -539,6 +548,7 @@ void preparingGroupCluePolynomial(const vector<int>& pertinentMsgIndices, PVWpk&
             }
         }
     }
+    cout << "\nSender average running time: " << total_time / numOfTransactions << "us." << "\n";
 }
 
 // similar to preparingTransactionsFormal but for fixed group GOMR which requires a MREGroupPK for each message.
@@ -559,6 +569,10 @@ vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices,
     for (auto &i : mreseed) { // the seed to randomly sample A1, and b in secret key
         i = random_uint64();
     }
+
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    uint64_t total_time = 0;
+
     for(int i = 0; i < numOfTransactions; i++){
         PVWCiphertext tempclue;
 
@@ -569,7 +583,14 @@ vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices,
             groupSK = fgomr::secretKeyGen(params, targetSK);
             gPK = fgomr::groupKeyGenAux(params, groupSK, mreseed);
             // groupPK = fgomr::keyGen(params, partialPK, mreseed, expseed);
+
+            time_start = chrono::high_resolution_clock::now();
+
             tempclue = fgomr::genClue(params, zeros, gPK, expseed);
+
+            time_end = chrono::high_resolution_clock::now();
+            total_time += chrono::duration_cast<chrono::microseconds>(time_end - time_start).count();
+
             ret.push_back(loadDataSingle(i));
             saveCluesWithRandomness(tempclue, i, expseed);
         } else {
@@ -579,6 +600,8 @@ vector<vector<uint64_t>> preparingMREGroupClue(vector<int>& pertinentMsgIndices,
             saveCluesWithRandomness(tempclue, i, expseed);
         }  
     }
+
+    cout << "\nSender average running time: " << total_time / pertinentMsgIndices.size() << "us." << "\n";
 
     return ret;
 }

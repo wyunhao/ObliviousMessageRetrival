@@ -24,7 +24,7 @@ void OMD1p(){
     cout << "Finishing generating sk for PVW cts\n";
 
     // step 2. prepare transactions
-    vector<int> pertinentMsgIndices(num_of_pertinent_msgs_glb);
+    vector<int> pertinentMsgIndices;
     auto expected = preparingTransactionsFormal(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb,  params);
     cout << expected.size() << " pertinent msg: Finishing preparing messages\n";
 
@@ -173,7 +173,7 @@ void OMR2(){
     cout << "Finishing generating sk for PVW cts\n";
 
     // step 2. prepare transactions
-    vector<int> pertinentMsgIndices(num_of_pertinent_msgs_glb);
+    vector<int> pertinentMsgIndices;
     auto expected = preparingTransactionsFormal(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb,  params);
     cout << expected.size() << " pertinent msg: Finishing preparing messages\n";
 
@@ -389,7 +389,7 @@ void OMR3(){
     cout << "Finishing generating sk for PVW cts\n";
 
     // step 2. prepare transactions
-    vector<int> pertinentMsgIndices(num_of_pertinent_msgs_glb);
+    vector<int> pertinentMsgIndices;
     auto expected = preparingTransactionsFormal(pertinentMsgIndices, pk, numOfTransactions, num_of_pertinent_msgs_glb,  params);
     cout << expected.size() << " pertinent msg: Finishing preparing messages\n";
 
@@ -527,7 +527,7 @@ void OMR3(){
     }
     bipartiteGraphWeightsGeneration(bipartite_map_glb, weights_glb, numOfTransactions, OMRthreeM, repeatition_glb, seed_glb);
 
-    int number_of_ct = repetition_glb * 3 * 512 / (poly_modulus_degree_glb / 512 / 3 * 3 * 512);
+    int number_of_ct = ceil(repetition_glb * 3 * 512 / ((poly_modulus_degree_glb / 512 / 3 * 3 * 512) * 1.0));
 
     NTL_EXEC_RANGE(numcores, first, last);
     for(int i = first; i < last; i++) {

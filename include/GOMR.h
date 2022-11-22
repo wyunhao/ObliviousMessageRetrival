@@ -1360,6 +1360,7 @@ void GOMR2_ObliviousMultiplexer_BFV() {
 
     chrono::high_resolution_clock::time_point time_start, time_end;
     chrono::microseconds time_diff;
+    uint64_t total_load = 0, total_multi = 0;
     time_start = chrono::high_resolution_clock::now();
 
     MemoryPoolHandle my_pool = MemoryPoolHandle::New();
@@ -1376,15 +1377,26 @@ void GOMR2_ObliviousMultiplexer_BFV() {
             // divide messages into parties, for partySize ciphertexts, each ciphertext p encrypt the PVs of the p-th messages in all groups
             // sum up all ciphertexts into one, s.t. each slot in the final ciphertext encrypts a single group
             Ciphertext packedSIC_temp;
+            time_start = chrono::high_resolution_clock::now();
             loadOMClueWithRandomness(params, cluePolyMatrics[i], counter[i], counter[i]+poly_modulus_degree, 454 * party_size_glb + prng_seed_uint64_count);
+            time_end = chrono::high_resolution_clock::now();
+            total_load += chrono::duration_cast<chrono::microseconds>(time_end - time_start).count();
+
+            time_start = chrono::high_resolution_clock::now();
             packedSICfromPhase1[i][j] = serverOperations1obtainPackedSICWithCluePoly(cluePolyMatrics[i], switchingKey, relin_keys, gal_keys,
                                                                                      poly_modulus_degree, context, params, poly_modulus_degree);
 
+            time_end = chrono::high_resolution_clock::now();
+            total_multi += chrono::duration_cast<chrono::microseconds>(time_end - time_start).count();
             j++;
             counter[i] += poly_modulus_degree;
             SICPVW_multicore[i].clear();
         }
     }
+
+    cout << "\nDetector running time load: " << total_load << "us." << "\n";
+    cout << "\nDetector running time multi: " << total_multi << "us." << "\n";
+    return;
 
     NTL_EXEC_RANGE_END;
     MemoryManager::SwitchProfile(std::move(old_prof));
@@ -1793,7 +1805,7 @@ void GOMR2_FG() {
         secret_key.data().data() + degree * (coeff_modulus.size() - 1), degree, 1,
         sk_next.data().data() + degree * (coeff_modulus_next.size() - 1));
     KeyGenerator keygen_next(context_next, sk_next);
-    vector<int> steps_next = {0,32,64,128,256,512,1024,2048};
+    vector<int> steps_next = {0,32,64,128,256,512};
     keygen_next.create_galois_keys(steps_next, gal_keys_next);
     //////////////////////////////////////
     PublicKey public_key_last;

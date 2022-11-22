@@ -39,7 +39,7 @@ vector<vector<int>> compressVector(const PVWParam& params, prng_seed_type seed, 
             long temp = 0;
             for (int k = 0; k < random_matrix.size(); k++) {
                 temp = (temp + ids[i][k] * random_matrix[k][j]) % params.q;
-                temp = temp < 0 ? temp += params.q : temp;
+                temp = temp < 0 ? temp + params.q : temp;
             }
             compressed_result[i][j] = temp;
         }

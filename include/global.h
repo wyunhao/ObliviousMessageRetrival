@@ -13,7 +13,7 @@ vector<vector<int>> weights_glb;
 int repeatition_glb = 5;
 prng_seed_type seed_glb;
 size_t C_glb = 5;
-int numOfTransactions_glb = 1<<18;
+int numOfTransactions_glb = 32768;
 size_t poly_modulus_degree_glb = 32768;
 size_t num_of_pertinent_msgs_glb = 50;
 int party_size_glb = 12;
