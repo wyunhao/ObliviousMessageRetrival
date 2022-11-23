@@ -199,6 +199,8 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
     for (tempn = 1; tempn < param.n; tempn *= 2) {}
     for (tempId = 1; tempId < id_size_glb * party_size_glb; tempId *= 2) {}
 
+    int iteration = ceil(tempId / batch_glb);
+    vector<Ciphertext> enc_id(batch_glb);
     /**
      * @brief when i = 0; partial_a encrypted (a_00, a_11, a_22, ...)
      * when i = 1; partial_a encrypted (a_01, a_12, a_23, ...)
@@ -207,49 +209,59 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
      * Eventually when we sum them up, we would have the sum if inner product on each entry:
      * --> (A0*sk, A1*sk, ...) = (b0, b1, ...) (in all ell such vectors)
      */
-    for (int i = 0; i < tempn; i++) {
-        Ciphertext partial_a;
-        for (int eid_index = 0; eid_index < tempId; eid_index++) {
-            vector<uint64_t> vectorOfA(cluePoly.size());
-            // cluePoly[i][j] = cluePoly.size() x (id_size_glb * party_size_glb)
-            // where, the row: newCluePoly[i] = i-th msg, (i + j) % tempn row of the original matrix
-            for (int j = 0; j < cluePoly.size(); j++) {
-                int row_index = (j + i) % tempn;
-                int col_index = (j + eid_index) % (tempId);
-                if (row_index >= param.n || col_index >= id_size_glb * party_size_glb) {
-                    vectorOfA[j] = 0;
-                } else {
-                    vectorOfA[j] = cluePoly[j][row_index * (id_size_glb*party_size_glb) + col_index];
-                }
-            }
-
-            // use the last switchingKey encrypting targetId with extended id_size_glbid-size as one unit, and rotate
-            Plaintext plaintext;
-            batch_encoder.encode(vectorOfA, plaintext);
-
-            if (eid_index == 0) {
-                evaluator.multiply_plain(switchingKey[switchingKey.size() - 1], plaintext, partial_a);
-            } else {
-                Ciphertext temp;
-                evaluator.multiply_plain(switchingKey[switchingKey.size() - 1], plaintext, temp);
-                evaluator.add_inplace(partial_a, temp);
-            }
+    for (int it = 0; it < iteration; it++) {
+        for (int i = 0; i < batch_glb; i++) {
+            evaluator.transform_to_ntt(switchingKey[switchingKey.size() - 1], enc_id[i]);
             evaluator.rotate_rows_inplace(switchingKey[switchingKey.size() - 1], 1, gal_keys);
         }
 
-        // perform ciphertext multi with switchingKey encrypted SK with [450] as one unit, and rotate
-        for(int j = 0; j < param.ell; j++){
-            if(i == 0){
-                evaluator.multiply(switchingKey[j], partial_a, output[j]);
+        for (int i = 0; i < tempn; i++) {
+            Ciphertext partial_a;
+            for (int eid_index = it*batch_glb; eid_index < (it+1)*batch_glb; eid_index++) {
+                vector<uint64_t> vectorOfA(cluePoly.size());
+                // cluePoly[i][j] = cluePoly.size() x (id_size_glb * party_size_glb)
+                // where, the row: newCluePoly[i] = i-th msg, (i + j) % tempn row of the original matrix
+                for (int j = 0; j < cluePoly.size(); j++) {
+                    int row_index = (j + i) % tempn;
+                    int col_index = (j + eid_index) % (tempId);
+                    if (row_index >= param.n || col_index >= id_size_glb * party_size_glb) {
+                        vectorOfA[j] = 0;
+                    } else {
+                        vectorOfA[j] = cluePoly[j][row_index * (id_size_glb*party_size_glb) + col_index];
+                    }
+                }
+
+                // use the last switchingKey encrypting targetId with extended id_size_glbid-size as one unit, and rotate
+                Plaintext plaintext;
+                batch_encoder.encode(vectorOfA, plaintext);
+
+                evaluator.transform_to_ntt_inplace(plaintext, switchingKey[switchingKey.size() - 1].parms_id());
+
+                if (eid_index % batch_glb == 0) {
+                    evaluator.multiply_plain(enc_id[eid_index % batch_glb], plaintext, partial_a);
+                } else {
+                    Ciphertext temp;
+                    evaluator.multiply_plain(enc_id[eid_index % batch_glb], plaintext, temp);
+                    evaluator.add_inplace(partial_a, temp);
+                }
             }
-            else{
-                Ciphertext temp;
-                evaluator.multiply(switchingKey[j], partial_a, temp);
-                evaluator.add_inplace(output[j], temp);
+
+            evaluator.transform_from_ntt_inplace(partial_a);
+
+            // perform ciphertext multi with switchingKey encrypted SK with [450] as one unit, and rotate
+            for(int j = 0; j < param.ell; j++) {
+                if(i == 0 && it == 0) {
+                    evaluator.multiply(switchingKey[j], partial_a, output[j]);
+                }
+                else {
+                    Ciphertext temp;
+                    evaluator.multiply(switchingKey[j], partial_a, temp);
+                    evaluator.add_inplace(output[j], temp);
+                }
+                evaluator.relinearize_inplace(output[j], relin_keys);
+                // rotate one slot at a time
+                evaluator.rotate_rows_inplace(switchingKey[j], 1, gal_keys);
             }
-            evaluator.relinearize_inplace(output[j], relin_keys);
-            // rotate one slot at a time
-            evaluator.rotate_rows_inplace(switchingKey[j], 1, gal_keys);
         }
     }
 
