@@ -199,6 +199,13 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
     for (tempn = 1; tempn < param.n; tempn *= 2) {}
     for (tempId = 1; tempId < id_size_glb * party_size_glb; tempId *= 2) {}
 
+    /**
+     * @brief Naively, we would have param.n * party_size * id_size multiplications, which is costy.
+     * To optimize it, we locally store batch_glb ntt form of the encrypted id, and reuse them when multiplying
+     * the encrypted id with the cluePoly.
+     * The reason why we batch process the encrypted id is to perform trade-off between local storage and 
+     * number of total multiplications needed.
+     */
     int iteration = ceil(tempId / batch_glb);
     vector<Ciphertext> enc_id(batch_glb);
     /**

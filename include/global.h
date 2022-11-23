@@ -21,7 +21,7 @@ int id_size_glb = 8;
 int repetition_glb = 16;
 int partial_size_glb = 8;
 
-int batch_glb = 64;
+int batch_glb = 64; // used for ntt_optimization in adhoc-gomr
 
 vector<uint64_t> expectedIndices;
 
