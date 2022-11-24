@@ -181,7 +181,7 @@ void expandSIC_Alt(vector<Ciphertext>& expanded, Ciphertext& toExpand, const Gal
  */
 void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const vector<vector<uint64_t>>& cluePoly, vector<Ciphertext>& switchingKey,
                                             const RelinKeys& relin_keys, const GaloisKeys& gal_keys, const SEALContext& context,
-                                            const PVWParam& param) { 
+                                            const PVWParam& param, uint64_t *total_plain_ntt) {
 
     MemoryPoolHandle my_pool = MemoryPoolHandle::New(true);
     auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
@@ -208,6 +208,8 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
      */
     int iteration = ceil(tempId / batch_glb);
     vector<Ciphertext> enc_id(batch_glb);
+
+    chrono::high_resolution_clock::time_point time_start, time_end;
     /**
      * @brief when i = 0; partial_a encrypted (a_00, a_11, a_22, ...)
      * when i = 1; partial_a encrypted (a_01, a_12, a_23, ...)
@@ -242,7 +244,10 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
                 Plaintext plaintext;
                 batch_encoder.encode(vectorOfA, plaintext);
 
+                time_start = chrono::high_resolution_clock::now();
                 evaluator.transform_to_ntt_inplace(plaintext, switchingKey[switchingKey.size() - 1].parms_id());
+                time_end = chrono::high_resolution_clock::now();
+                *total_plain_ntt += chrono::duration_cast<chrono::microseconds>(time_end - time_start).count();
 
                 if (eid_index % batch_glb == 0) {
                     evaluator.multiply_plain(enc_id[eid_index % batch_glb], plaintext, partial_a);

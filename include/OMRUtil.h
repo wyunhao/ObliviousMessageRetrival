@@ -94,11 +94,11 @@ Ciphertext serverOperations1obtainPackedSIC(vector<PVWCiphertext>& SICPVW, vecto
 // used in GOMR1/2_ObliviousMultiplexer_BFV
 Ciphertext serverOperations1obtainPackedSICWithCluePoly(vector<vector<uint64_t>>& cluePoly, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
                                                         const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context,
-                                                        const PVWParam& params, const int numOfTransactions) {
+                                                        const PVWParam& params, const int numOfTransactions, uint64_t *total_plain_ntt) {
     Evaluator evaluator(context);
     
     vector<Ciphertext> packedSIC(params.ell);
-    computeBplusASPVWOptimizedWithCluePoly(packedSIC, cluePoly, switchingKey, relin_keys, gal_keys, context, params);
+    computeBplusASPVWOptimizedWithCluePoly(packedSIC, cluePoly, switchingKey, relin_keys, gal_keys, context, params, total_plain_ntt);
 
     int rangeToCheck = 850; // range check is from [-rangeToCheck, rangeToCheck-1]
     newRangeCheckPVW(packedSIC, rangeToCheck, relin_keys, degree, context, params);
