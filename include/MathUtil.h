@@ -30,7 +30,7 @@ vector<vector<uint64_t>> generateRandomMatrixWithSeed(const PVWParam& params, pr
     return random_matrix;
 }
 
-vector<vector<int>> compressVector(const PVWParam& params, prng_seed_type seed, vector<vector<int>> ids, const int compress_size = party_size_glb) {
+vector<vector<int>> compressVector(const PVWParam& params, prng_seed_type seed, vector<vector<int>> ids, const int compress_size = party_size_glb + secure_extra_length_glb) {
     vector<vector<int>> compressed_result(ids.size(), vector<int>(compress_size));
     vector<vector<uint64_t>> random_matrix = generateRandomMatrixWithSeed(params, seed, ids[0].size(), compress_size);
 

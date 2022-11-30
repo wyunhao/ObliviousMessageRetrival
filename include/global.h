@@ -16,10 +16,11 @@ size_t C_glb = 5;
 int numOfTransactions_glb = 32768;
 size_t poly_modulus_degree_glb = 32768;
 size_t num_of_pertinent_msgs_glb = 50;
-int party_size_glb = 12;
-int id_size_glb = 8;
+int party_size_glb = 68;
+int secure_extra_length_glb = 9; // T + secure_extra_length_glb = T', for a rand matrix to be full rank
+int id_size_glb = 15;
 int repetition_glb = 16;
-int partial_size_glb = 8;
+int partial_size_glb = 8; // the part of shared_sk length
 
 int batch_glb = 128; // used for ntt_optimization in adhoc-gomr
 

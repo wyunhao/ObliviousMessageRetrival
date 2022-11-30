@@ -395,8 +395,6 @@ void updateEquation(vector<vector<long>>& res, vector<vector<int>>& lhs, vector<
     }
 }
 
-
-// TODO: use this to refactor the previous method solveCluePolynomial
 // similar to equationSolving, but assign random values to variable if the equation coefficient matrix is not full rank, i.e. no solution
 vector<vector<long>> equationSolvingRandom(vector<vector<int>>& lhs, vector<vector<int>>& rhs, const int& numToSolve = -1) {
     prng_seed_type seed;
@@ -418,4 +416,44 @@ vector<vector<long>> equationSolvingRandom(vector<vector<int>>& lhs, vector<vect
         }
     }
     return tryRes;
+}
+
+// similar to equationSolvingRandom, but batch the rhs to reduce the gaussian eliminations performed.
+vector<vector<long>> equationSolvingRandomBatch(vector<vector<int>>& lhs, vector<vector<int>>& rhs, const int& numToSolve = -1) {
+    vector<vector<long>> batched_res(rhs[0].size(), vector<long>(lhs[0].size()));
+    prng_seed_type seed;
+    for (auto &i : seed) {
+        i = random_uint64();
+    }
+
+    auto rng = make_shared<Blake2xbPRNGFactory>(Blake2xbPRNGFactory(seed));
+    RandomToStandardAdapter engine(rng->create());
+
+    vector<vector<long>> tryRes = equationSolving(lhs, rhs, -1);
+    if (tryRes.empty()) {
+        for (int k = 0; k < rhs[0].size(); k++) { // for each batched rhs, separate the equation system and solve the variables
+            vector<vector<int>> single_rhs(rhs.size(), vector<int>(1)), lhs_copy(lhs.size(), vector<int>(lhs[0].size()));
+            for (int i = 0; i < rhs.size(); i++) {
+                single_rhs[i][0] = rhs[i][k];
+            }
+            for (int i = 0; i < lhs.size(); i++) {
+                for (int j = 0; j < lhs[0].size(); j++) {
+                    lhs_copy[i][j] = lhs[i][j];
+                }
+            }
+            vector<vector<long>> single_res(lhs_copy[0].size(), vector<long>(1));
+            while (!lhs_copy.empty()) {
+                assignVariable(engine, single_res, lhs_copy[lhs_copy.size() - 1], single_rhs[single_rhs.size() - 1][0]);
+                lhs_copy.pop_back();
+                single_rhs.pop_back();
+                updateEquation(single_res, lhs_copy, single_rhs);
+            }
+
+            for (int i = 0; i < lhs[0].size(); i++) {
+                batched_res[k][i] = single_res[i][0];
+            }
+        }
+    }
+
+    return batched_res;
 }

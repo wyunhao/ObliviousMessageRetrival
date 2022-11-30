@@ -165,7 +165,7 @@ void loadClues(vector<PVWCiphertext>& clues, const int& start, const int& end, c
  * @param randomness 
  * @param start 
  * @param end 
- * @param payloadSize 
+ * @param payloadSize = clueLength * T', where T' = party_size + extra_secure_length
  */
 void loadOMClueWithRandomness(const PVWParam& params, vector<vector<uint64_t>>& cluePoly, const int& start, const int& end, int payloadSize = 306, int clueLength = 454) {
     vector<uint64_t> temp(payloadSize - prng_seed_uint64_count);
@@ -196,14 +196,15 @@ void loadOMClueWithRandomness(const PVWParam& params, vector<vector<uint64_t>>& 
             prng_seed_uint64_counter++;
         }
 
-        vector<vector<uint64_t>> random = generateRandomMatrixWithSeed(params, seed, id_size_glb * party_size_glb, party_size_glb);
+        vector<vector<uint64_t>> random = generateRandomMatrixWithSeed(params, seed, id_size_glb * party_size_glb,
+                                                                       party_size_glb + secure_extra_length_glb);
 
         for (int c = 0; c < cluePoly[i].size(); c++) {
             int row_index = c / (id_size_glb * party_size_glb);
             int col_index = c % (id_size_glb * party_size_glb);
             long tempClue = 0;
-            for (int k = 0; k < party_size_glb; k++) {
-                tempClue = (tempClue + temp[row_index * party_size_glb + k] * random[col_index][k]) % params.q;
+            for (int k = 0; k < party_size_glb + secure_extra_length_glb; k++) {
+                tempClue = (tempClue + temp[row_index * (party_size_glb + secure_extra_length_glb) + k] * random[col_index][k]) % params.q;
                 tempClue = tempClue < 0 ? tempClue + params.q : tempClue;
             }
             cluePoly[i][c] = tempClue;
@@ -278,12 +279,11 @@ void loadObliviousMultiplexerClues(vector<int> pertinent_msgs, vector<PVWCiphert
 
     for (int i = start; i < end; i++) {
         prng_seed_type seed;
-        vector<uint64_t> polyFlat = loadDataSingle(i, "cluePoly", clueLength * party_size_glb + prng_seed_uint64_count);
-        vector<vector<long>> cluePolynomial(clueLength, vector<long>(party_size_glb));
+        vector<uint64_t> polyFlat = loadDataSingle(i, "cluePoly", clueLength * (party_size_glb + secure_extra_length_glb) + prng_seed_uint64_count);
 
         int prng_seed_uint64_counter = 0;
         for (auto &s : seed) {
-            s = polyFlat[clueLength * party_size_glb + prng_seed_uint64_counter];
+            s = polyFlat[clueLength * (party_size_glb + secure_extra_length_glb) + prng_seed_uint64_counter];
             prng_seed_uint64_counter++;
         }
 

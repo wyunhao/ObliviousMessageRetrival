@@ -16,6 +16,26 @@ using namespace seal;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+// void test() {
+//     vector<vector<int>> rhs(2), lhs(2);
+//     vector<vector<long>> res(3);
+//     for (int i = 0; i < 2; i++) {
+//         lhs[i].resize(3);
+//         for (int j = 0; j < 3; j++ ) {
+//             lhs[i][j] = i+j;
+//         }
+//     }
+//     for (int i = 0; i < 2; i++) {
+//         rhs[i].resize(2);
+//         for (int j = 0; j < 2; j++ ) {
+//             rhs[i][j] = i+j;
+//         }
+//     }
+//     res = equationSolvingRandomBatch(lhs, rhs);
+
+//     return;
+// }
+
 /**
  * 
  * @brief GOMR1 is generalization of OMR to group OMR, sender duplicates each message T times, where T is the group size,
@@ -1147,7 +1167,8 @@ void GOMR1_ObliviousMultiplexer_BFV() {
             // sum up all ciphertexts into one, s.t. each slot in the final ciphertext encrypts a single group
             Ciphertext packedSIC_temp;
 
-            loadOMClueWithRandomness(params, cluePolyMatrics[i], counter[i], counter[i]+poly_modulus_degree, 454 * party_size_glb + prng_seed_uint64_count);
+            loadOMClueWithRandomness(params, cluePolyMatrics[i], counter[i], counter[i]+poly_modulus_degree,
+                                     454 * (party_size_glb + secure_extra_length_glb) + prng_seed_uint64_count);
             packedSICfromPhase1[i][j] = serverOperations1obtainPackedSICWithCluePoly(cluePolyMatrics[i], switchingKey, relin_keys, gal_keys,
                                                                                      poly_modulus_degree, context, params, poly_modulus_degree, &total_plain_ntt);
             j++;
@@ -1379,7 +1400,8 @@ void GOMR2_ObliviousMultiplexer_BFV() {
             // sum up all ciphertexts into one, s.t. each slot in the final ciphertext encrypts a single group
             Ciphertext packedSIC_temp;
             time_start = chrono::high_resolution_clock::now();
-            loadOMClueWithRandomness(params, cluePolyMatrics[i], counter[i], counter[i]+poly_modulus_degree, 454 * party_size_glb + prng_seed_uint64_count);
+            loadOMClueWithRandomness(params, cluePolyMatrics[i], counter[i], counter[i]+poly_modulus_degree,
+                                     454 * (party_size_glb + secure_extra_length_glb) + prng_seed_uint64_count);
             time_end = chrono::high_resolution_clock::now();
             total_load += chrono::duration_cast<chrono::microseconds>(time_end - time_start).count();
 

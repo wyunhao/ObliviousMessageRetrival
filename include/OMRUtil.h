@@ -462,10 +462,10 @@ vector<vector<int>> initializeRecipientId(const PVWParam& params, int partySize,
  */
 bool verify(const PVWParam& params, const vector<int>& extended_id, int index, int partySize = party_size_glb, bool prepare = false) {
     prng_seed_type seed;
-    vector<uint64_t> polyFlat = loadDataSingle(index, "cluePoly", (params.n + params.ell) * partySize + prng_seed_uint64_count);
+    vector<uint64_t> polyFlat = loadDataSingle(index, "cluePoly", (params.n + params.ell) * (partySize + secure_extra_length_glb) + prng_seed_uint64_count);
     int prng_seed_uint64_counter = 0;
     for (auto &i : seed) {
-        i = polyFlat[(params.n + params.ell) * partySize + prng_seed_uint64_counter];
+        i = polyFlat[(params.n + params.ell) * (partySize + secure_extra_length_glb) + prng_seed_uint64_counter];
         prng_seed_uint64_counter++;
     }
 

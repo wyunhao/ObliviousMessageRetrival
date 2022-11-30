@@ -157,11 +157,6 @@ namespace mre {
         ct.b = NativeVector(param.ell);
 
         vector<vector<uint64_t>> b_prime(partySize, vector<uint64_t>(param.ell));
-
-        chrono::high_resolution_clock::time_point time_start, time_end;
-        chrono::microseconds time_diff;
-        time_start = chrono::high_resolution_clock::now();
-
         for(size_t i = 0; i < groupPK.partialPK.size(); i++){
             if (dist(engine)){
                 for(int j = 0; j < groupPK.partialPK[i].A1.GetLength(); j++) {
@@ -194,7 +189,7 @@ namespace mre {
             }
 
             vector<vector<int>> extended_shared_sk = generateExponentialExtendedVector(param, old_shared_sk, partySize);
-            lhs = compressVector(param, exp_seed, extended_shared_sk, partySize);
+            lhs = compressVector(param, exp_seed, extended_shared_sk);
             res[i] = equationSolvingRandom(lhs, rhs, -1);
         }
 
@@ -207,9 +202,5 @@ namespace mre {
         for(int j = 0; j < param.ell; j++){
             msg[j]? ct.b[j].ModAddFastEq(3*q/4, q) : ct.b[j].ModAddFastEq(q/4, q);
         }
-
-        time_end = chrono::high_resolution_clock::now();
-        time_diff = chrono::duration_cast<chrono::microseconds>(time_end - time_start);
-        cout << "\nGenClue Running time: " << time_diff.count() << "us." << "\n";
     }
 }
