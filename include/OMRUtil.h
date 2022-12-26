@@ -92,16 +92,25 @@ Ciphertext serverOperations1obtainPackedSIC(vector<PVWCiphertext>& SICPVW, vecto
 
 // Phase 1, obtaining PV's based on encrypted targetId
 // used in GOMR1/2_ObliviousMultiplexer_BFV
-Ciphertext serverOperations1obtainPackedSICWithCluePoly(vector<vector<uint64_t>>& cluePoly, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys,
-                                                        const GaloisKeys& gal_keys, const size_t& degree, const SEALContext& context,
-                                                        const PVWParam& params, const int numOfTransactions, uint64_t *total_plain_ntt) {
+Ciphertext serverOperations1obtainPackedSICWithCluePoly(vector<vector<uint64_t>>& cluePoly, vector<Ciphertext> switchingKey, const RelinKeys& relin_keys, const GaloisKeys& gal_keys, 
+                                                        const size_t& degree, const SEALContext& context, const PVWParam& params,
+                                                        const int numOfTransactions, uint64_t *total_plain_ntt) {
     Evaluator evaluator(context);
     
     vector<Ciphertext> packedSIC(params.ell);
+
+    chrono::high_resolution_clock::time_point time_start, time_end;
+    time_start = chrono::high_resolution_clock::now();
     computeBplusASPVWOptimizedWithCluePoly(packedSIC, cluePoly, switchingKey, relin_keys, gal_keys, context, params, total_plain_ntt);
+    time_end = chrono::high_resolution_clock::now();
+    cout << "-- computeBplusASPVWOptimizedWithCluePoly time: " << chrono::duration_cast<chrono::microseconds>(time_end - time_start).count() << "us." << "\n";
 
     int rangeToCheck = 850; // range check is from [-rangeToCheck, rangeToCheck-1]
+
+    time_start = chrono::high_resolution_clock::now();
     newRangeCheckPVW(packedSIC, rangeToCheck, relin_keys, degree, context, params);
+    time_end = chrono::high_resolution_clock::now();
+    cout << "-- newRangeCheckPVW time: " << chrono::duration_cast<chrono::microseconds>(time_end - time_start).count() << "us." << "\n";
 
     return packedSIC[0];
 }

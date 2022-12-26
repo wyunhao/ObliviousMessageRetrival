@@ -2,6 +2,7 @@
 
 #include "regevEncryption.h"
 #include "seal/seal.h"
+#include "LoadAndSaveUtils.h"
 #include <NTL/BasicThreadPool.h>
 #include "global.h"
 using namespace seal;
@@ -168,6 +169,15 @@ void expandSIC_Alt(vector<Ciphertext>& expanded, Ciphertext& toExpand, const Gal
 }
 
 
+bool checkArrayEqual(vector<uint64_t> vectorOfA, vector<uint64_t> vectorOfA_copy) {
+    for (int i = 0; i < vectorOfA.size(); i++) {
+        if (vectorOfA[i] != vectorOfA_copy[i])
+            return false;
+    }
+
+    return true;
+}
+
 /**
  * @brief compute b - as with packed swk but also only requires one rot key
  * 
@@ -179,9 +189,8 @@ void expandSIC_Alt(vector<Ciphertext>& expanded, Ciphertext& toExpand, const Gal
  * @param context SEAL context for evaluator and encoder
  * @param param PVWParam
  */
-void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const vector<vector<uint64_t>>& cluePoly, vector<Ciphertext>& switchingKey,
-                                            const RelinKeys& relin_keys, const GaloisKeys& gal_keys, const SEALContext& context,
-                                            const PVWParam& param, uint64_t *total_plain_ntt) {
+void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const vector<vector<uint64_t>>& cluePoly, vector<Ciphertext>& switchingKey, const RelinKeys& relin_keys,
+                                            const GaloisKeys& gal_keys, const SEALContext& context, const PVWParam& param, uint64_t *total_plain_ntt) {
 
     MemoryPoolHandle my_pool = MemoryPoolHandle::New(true);
     auto old_prof = MemoryManager::SwitchProfile(std::make_unique<MMProfFixed>(std::move(my_pool)));
@@ -191,7 +200,7 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
     Evaluator evaluator(context);
     BatchEncoder batch_encoder(context);
     size_t slot_count = batch_encoder.slot_count();
-    if (cluePoly.size() > slot_count) {
+    if (poly_modulus_degree_glb > slot_count) {
         cerr << "Please pack at most " << slot_count << " PVW ciphertexts at one time." << endl;
         return;
     }
@@ -201,110 +210,173 @@ void computeBplusASPVWOptimizedWithCluePoly(vector<Ciphertext>& output, const ve
 
     /**
      * @brief Naively, we would have param.n * party_size * id_size multiplications, which is costy.
-     * To optimize it, we locally store batch_glb ntt form of the encrypted id, and reuse them when multiplying
+     * To optimize it, we locally store batch_ntt_glb ntt form of the encrypted id, and reuse them when multiplying
      * the encrypted id with the cluePoly.
      * The reason why we batch process the encrypted id is to perform trade-off between local storage and 
      * number of total multiplications needed.
      */
-    int iteration = ceil(tempId / batch_glb);
-    vector<Ciphertext> enc_id(batch_glb);
+    int iteration_ntt = ceil(tempId / batch_ntt_glb);
+    int iteration_cm = ceil(poly_modulus_degree_glb / batch_cm_glb);
+    vector<Ciphertext> enc_id(batch_ntt_glb);
 
-    chrono::high_resolution_clock::time_point time_start, time_end;
+    chrono::microseconds encode_t(0), ntt_t(0), ntt_ct_t(0), multi_pl_t(0), multi_t(0), multi_b_t(0), prepare_t(0), ntt_from(0), t1(0), t2(0), a_t(0);
+    chrono::high_resolution_clock::time_point e1, time_start, time_end, time_start_a, time_end_a, ntt_ct_s, ntt_ct_e, multi_pl_s, multi_pl_e, multi_s, multi_e, multi_b_s, multi_b_e;
     /**
      * @brief when i = 0; partial_a encrypted (a_00, a_11, a_22, ...)
      * when i = 1; partial_a encrypted (a_01, a_12, a_23, ...)
-     * so that in the first iteration, we have (a_00, a_11, a_22, ...) * (sk0, sk1, sk2, ...), and
-     * in the second iteration, we have (a_01, a_12, a_23, ...) * (sk1, sk2, sk3, ...).
+     * so that in the first iteration_ntt, we have (a_00, a_11, a_22, ...) * (sk0, sk1, sk2, ...), and
+     * in the second iteration_ntt, we have (a_01, a_12, a_23, ...) * (sk1, sk2, sk3, ...).
      * Eventually when we sum them up, we would have the sum if inner product on each entry:
      * --> (A0*sk, A1*sk, ...) = (b0, b1, ...) (in all ell such vectors)
      */
-    for (int it = 0; it < iteration; it++) {
-        for (int i = 0; i < batch_glb; i++) {
-            evaluator.transform_to_ntt(switchingKey[switchingKey.size() - 1], enc_id[i]);
+    for (int it = 0; it < iteration_ntt; it++) {
+        for (int i = 0; i < batch_ntt_glb; i++) {
+            ntt_ct_s = chrono::high_resolution_clock::now();
+            evaluator.transform_to_ntt(switchingKey[switchingKey.size() - 1], enc_id[i]);           
+            ntt_ct_e = chrono::high_resolution_clock::now();
+            ntt_ct_t += chrono::duration_cast<chrono::microseconds>(ntt_ct_e - ntt_ct_s);
             evaluator.rotate_rows_inplace(switchingKey[switchingKey.size() - 1], 1, gal_keys);
         }
 
-        for (int i = 0; i < tempn; i++) {
-            Ciphertext partial_a;
-            for (int eid_index = it*batch_glb; eid_index < (it+1)*batch_glb; eid_index++) {
-                vector<uint64_t> vectorOfA(cluePoly.size());
-                // cluePoly[i][j] = cluePoly.size() x (id_size_glb * party_size_glb)
-                // where, the row: newCluePoly[i] = i-th msg, (i + j) % tempn row of the original matrix
-                for (int j = 0; j < cluePoly.size(); j++) {
-                    int row_index = (j + i) % tempn;
-                    int col_index = (j + eid_index) % (tempId);
-                    if (row_index >= param.n || col_index >= id_size_glb * party_size_glb) {
-                        vectorOfA[j] = 0;
-                    } else {
-                        vectorOfA[j] = cluePoly[j][row_index * (id_size_glb*party_size_glb) + col_index];
-                    }
-                }
+        for (int it_cm = 0; it_cm < iteration_cm; it_cm++) {
+            int start = it_cm*batch_cm_glb, end = (it_cm+1)*batch_cm_glb;
+            // time_start = chrono::high_resolution_clock::now();
+            vector<vector<uint64_t>> expanded_CM = batchLoadOMClueWithRandomness(param, start, end, 454 * (party_size_glb + secure_extra_length_glb) + prng_seed_uint64_count);
+            // time_end = chrono::high_resolution_clock::now();
+            // if (it_cm == 0 && it == 0)
+            //     cout << "   one load cm time: " << chrono::duration_cast<chrono::microseconds>(time_end - time_start).count() << "us." << "\n";
 
-                // use the last switchingKey encrypting targetId with extended id_size_glbid-size as one unit, and rotate
-                Plaintext plaintext;
-                batch_encoder.encode(vectorOfA, plaintext);
+            for (int i = 0; i < tempn; i++) {
+                time_start_a = chrono::high_resolution_clock::now();
+                Ciphertext partial_a;
+                for (int eid_index = it*batch_ntt_glb; eid_index < (it+1)*batch_ntt_glb; eid_index++) {
+                    vector<uint64_t> vectorOfA(poly_modulus_degree_glb);
+                    // expanded_CM[i][j] = cluePoly.size() x (id_size_glb * party_size_glb)
+                    // where, the row: vectorOfA[i] = i-th msg, (i + j) % tempn row of the original matrix
+                    time_start = chrono::high_resolution_clock::now();
+                    for (int j = 0; j < poly_modulus_degree_glb; j++) {
+                        int row_index = (j + i) % tempn;
+                        int col_index = (j + eid_index) % (tempId);
+                        if (row_index >= param.n || col_index >= id_size_glb * party_size_glb || j < start || j >= end) {
+                            vectorOfA[j] = 0;
+                        } else {
+                            vectorOfA[j] = expanded_CM[j % batch_cm_glb][row_index * (id_size_glb*party_size_glb) + col_index];
+                        }
+                    }
+                    time_end = chrono::high_resolution_clock::now();
+                    prepare_t += chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+
+                    // use the last switchingKey encrypting targetId with extended id_size_glbid-size as one unit, and rotate
+                    Plaintext plaintext;
+                    time_start = chrono::high_resolution_clock::now();
+                    batch_encoder.encode(vectorOfA, plaintext);
+                    time_end = chrono::high_resolution_clock::now();
+                    encode_t += chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+
+                    time_start = chrono::high_resolution_clock::now();
+                    evaluator.transform_to_ntt_inplace(plaintext, switchingKey[switchingKey.size() - 1].parms_id());
+                    time_end = chrono::high_resolution_clock::now();
+                    *total_plain_ntt += chrono::duration_cast<chrono::microseconds>(time_end - time_start).count();
+                    ntt_t += chrono::duration_cast<chrono::microseconds>(time_end - time_start);
+
+                    multi_pl_s = chrono::high_resolution_clock::now();
+                    if (eid_index % batch_ntt_glb == 0) {
+                        evaluator.multiply_plain(enc_id[eid_index % batch_ntt_glb], plaintext, partial_a);
+                    } else {
+                        Ciphertext temp;
+                        evaluator.multiply_plain(enc_id[eid_index % batch_ntt_glb], plaintext, temp);
+                        evaluator.add_inplace(partial_a, temp);
+                    }
+                    multi_pl_e = chrono::high_resolution_clock::now();
+                    multi_pl_t += chrono::duration_cast<chrono::microseconds>(multi_pl_e - multi_pl_s);
+                    // if (it == 0 && i == 0)
+                    //     cout << "   one multi plain (clue * id) time: " << chrono::duration_cast<chrono::microseconds>(time_end - time_start).count() << "us." << "\n";
+                }
+                e1 = chrono::high_resolution_clock::now();
+                t1 += chrono::duration_cast<chrono::microseconds>(e1 - time_start);
 
                 time_start = chrono::high_resolution_clock::now();
-                evaluator.transform_to_ntt_inplace(plaintext, switchingKey[switchingKey.size() - 1].parms_id());
+                evaluator.transform_from_ntt_inplace(partial_a);
                 time_end = chrono::high_resolution_clock::now();
-                *total_plain_ntt += chrono::duration_cast<chrono::microseconds>(time_end - time_start).count();
+                ntt_from += chrono::duration_cast<chrono::microseconds>(time_end - time_start);
 
-                if (eid_index % batch_glb == 0) {
-                    evaluator.multiply_plain(enc_id[eid_index % batch_glb], plaintext, partial_a);
-                } else {
-                    Ciphertext temp;
-                    evaluator.multiply_plain(enc_id[eid_index % batch_glb], plaintext, temp);
-                    evaluator.add_inplace(partial_a, temp);
+                time_start = chrono::high_resolution_clock::now();
+                // perform ciphertext multi with switchingKey encrypted SK with [450] as one unit, and rotate
+                for(int j = 0; j < param.ell; j++) {
+                    multi_s = chrono::high_resolution_clock::now();
+                    if(i == 0 && it == 0 && it_cm == 0) {
+                        evaluator.multiply(switchingKey[j], partial_a, output[j]);
+                    }
+                    else {
+                        Ciphertext temp;
+                        evaluator.multiply(switchingKey[j], partial_a, temp);
+                        evaluator.add_inplace(output[j], temp);
+                    }
+                    evaluator.relinearize_inplace(output[j], relin_keys);
+                    // rotate one slot at a time
+                    evaluator.rotate_rows_inplace(switchingKey[j], 1, gal_keys);
+                    multi_e = chrono::high_resolution_clock::now();
+                    multi_t += chrono::duration_cast<chrono::microseconds>(multi_e - multi_s);
                 }
-            }
-
-            evaluator.transform_from_ntt_inplace(partial_a);
-
-            // perform ciphertext multi with switchingKey encrypted SK with [450] as one unit, and rotate
-            for(int j = 0; j < param.ell; j++) {
-                if(i == 0 && it == 0) {
-                    evaluator.multiply(switchingKey[j], partial_a, output[j]);
-                }
-                else {
-                    Ciphertext temp;
-                    evaluator.multiply(switchingKey[j], partial_a, temp);
-                    evaluator.add_inplace(output[j], temp);
-                }
-                evaluator.relinearize_inplace(output[j], relin_keys);
-                // rotate one slot at a time
-                evaluator.rotate_rows_inplace(switchingKey[j], 1, gal_keys);
-            }
+                time_end_a = chrono::high_resolution_clock::now();
+                a_t += chrono::duration_cast<chrono::microseconds>(time_end_a - time_start_a);
+                t2 += chrono::duration_cast<chrono::microseconds>(time_end_a - time_start);
+            }            
         }
     }
+
+    cout << "Average a op time: " << a_t.count() / tempn / iteration_cm / iteration_ntt << " us.\n";
+    cout << "Average encode time: " << encode_t.count() / tempn / tempId / iteration_cm / iteration_ntt << " us.\n";
+    cout << "Average ntt plain time: " << ntt_t.count() / tempn / tempId / iteration_cm / iteration_ntt << " us.\n";
+    cout << "Average prepare vectorOfA time:" << prepare_t.count() / tempn / tempId / iteration_cm / iteration_ntt << " us.\n";
+    cout << "Average ntt ct time: " << ntt_ct_t.count() / tempId / iteration_cm / iteration_ntt << " us.\n";
+    cout << "Average multi ntt time: " << multi_pl_t.count() / tempId / tempn / iteration_cm / iteration_ntt << " us.\n";
+    cout << "Average ntt from time: " << ntt_from.count() / tempn / iteration_cm / iteration_ntt << " us.\n";
+    cout << "Average multi ct time: " << multi_t.count() / param.ell / tempn / iteration_cm / iteration_ntt << " us.\n\n";
+
+    cout << "Average first 4 operations (*128) time: " << t1.count() / tempn / iteration_cm / iteration_ntt << " us.\n";
+    cout << "Average last clue*sk operations (*ell) time: " << t2.count() / tempn / iteration_cm / iteration_ntt << " us.\n";
 
     // multiply (encrypted Id) with ell different (clue poly for b)
     vector<Ciphertext> b_parts(param.ell);
-    for (tempn = 1; tempn < id_size_glb * party_size_glb; tempn *= 2) {}
-    for (int i = 0; i < tempn; i++) {
-        for (int e = 0; e < param.ell; e++) {
-            vector<uint64_t> vectorOfB(cluePoly.size());
-            for (int j = 0; j < cluePoly.size(); j++) {
-                int the_index = (i + j) % tempn;
-                if (the_index >= id_size_glb * party_size_glb) {
-                    vectorOfB[j] = 0;
-                } else {
-                    vectorOfB[j] = cluePoly[j][(param.n + e) * (id_size_glb * party_size_glb) + the_index];
+    // for (tempn = 1; tempn < id_size_glb * party_size_glb; tempn *= 2) {}
+    for (int it_cm = 0; it_cm < iteration_cm; it_cm++) {
+        int start = it_cm*batch_cm_glb, end = (it_cm+1)*batch_cm_glb;
+        // cout << "for b: before load expanded_CM from " << start << " to " << end << endl;
+        vector<vector<uint64_t>> expanded_CM = batchLoadOMClueWithRandomness(param, start, end, 454 * (party_size_glb + secure_extra_length_glb) + prng_seed_uint64_count);
+
+        for (int i = 0; i < tempId; i++) {
+            for (int e = 0; e < param.ell; e++) {
+                vector<uint64_t> vectorOfB(poly_modulus_degree_glb);
+                for (int j = 0; j < poly_modulus_degree_glb; j++) {
+                    int the_index = (i + j) % tempId;
+                    if (the_index >= id_size_glb * party_size_glb || j < start || j >= end) {
+                        vectorOfB[j] = 0;
+                    } else {
+                        vectorOfB[j] = expanded_CM[j % batch_cm_glb][(param.n + e) * (id_size_glb * party_size_glb) + the_index];
+                        // vectorOfB[j] = loadEntryFromProcessedCM(j, (param.n + e) * (id_size_glb * party_size_glb) + the_index);
+                    }
                 }
-            }
 
-            Plaintext plaintext;
-            batch_encoder.encode(vectorOfB, plaintext);
-
-            if (i == 0) {
-                evaluator.multiply_plain(switchingKey[switchingKey.size() - 1], plaintext, b_parts[e]);
-            } else {
-                Ciphertext temp;
-                evaluator.multiply_plain(switchingKey[switchingKey.size() - 1], plaintext, temp);
-                evaluator.add_inplace(b_parts[e], temp);
+                Plaintext plaintext;
+                batch_encoder.encode(vectorOfB, plaintext);
+       
+                multi_b_s = chrono::high_resolution_clock::now();
+                if (i == 0 && it_cm == 0) {
+                    evaluator.multiply_plain(switchingKey[switchingKey.size() - 1], plaintext, b_parts[e]);
+                } else {
+                    Ciphertext temp;
+                    evaluator.multiply_plain(switchingKey[switchingKey.size() - 1], plaintext, temp);
+                    evaluator.add_inplace(b_parts[e], temp);
+                }
+                multi_b_e = chrono::high_resolution_clock::now();
+                multi_b_t += chrono::duration_cast<chrono::microseconds>(multi_b_e - multi_b_s);
             }
+            evaluator.rotate_rows_inplace(switchingKey[switchingKey.size() - 1], 1, gal_keys);
         }
-        evaluator.rotate_rows_inplace(switchingKey[switchingKey.size() - 1], 1, gal_keys);
     }
+
+    cout << "Average multi plain time: " << multi_b_t.count() / param.ell / tempId << " us.\n";
 
     // compute a*SK - b with ciphertexts
     for(int i = 0; i < param.ell; i++){

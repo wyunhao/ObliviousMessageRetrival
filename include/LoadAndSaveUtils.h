@@ -3,6 +3,7 @@
 #include<iostream>
 #include<fstream>
 #include<string>
+#include <limits>
 #include "MRE.h"
 #include "MathUtil.h"
 using namespace std;
@@ -19,7 +20,7 @@ void createDatabase(int num_of_transactions = 524288, int payloadSize = 306){
     }
 }
 
-vector<uint64_t> loadDataSingle(int i, const string folder = "payloads", int payloadSize = 306){
+vector<uint64_t> loadDataSingle(int i, const string folder = "payloads", int payloadSize = 306) {
     vector<uint64_t> ret;
 
     ret.resize(payloadSize);
@@ -94,7 +95,7 @@ void saveGroupClues(const vector<vector<long>>& cluePolynomial, prng_seed_type s
     datafile.close();
 }
 
-void saveCluesWithRandomness(const PVWCiphertext& clue, int transaction_num, prng_seed_type seed){
+void saveCluesWithRandomness(const PVWCiphertext& clue, const int transaction_num, prng_seed_type seed) {
     ofstream datafile;
     datafile.open ("../data/clues/"+to_string(transaction_num)+".txt");
 
@@ -107,6 +108,17 @@ void saveCluesWithRandomness(const PVWCiphertext& clue, int transaction_num, prn
     for (auto &i : seed) {
         datafile << i << "\n";
     }
+    datafile.close();
+}
+
+void writeVectorToFile(vector<uint64_t> vec, const int file_num, const string folderName) {
+    ofstream datafile;
+    datafile.open ("../data/" + folderName + "/"+to_string(file_num)+".txt");
+
+    for(size_t i = 0; i < vec.size(); i++){
+        datafile << vec[i] << "\n";
+    }
+
     datafile.close();
 }
 
@@ -154,6 +166,78 @@ void loadClues(vector<PVWCiphertext>& clues, const int& start, const int& end, c
 }
 
 
+ifstream& gotoLine(ifstream& file, unsigned int num){
+    file.seekg(ios::beg);
+    for (int i = 0; i < num; i++) {
+        file.ignore(numeric_limits<streamsize>::max(), '\n');
+    }
+    return file;
+}
+
+uint64_t loadEntryFromProcessedCM(const int trans_num, const int entry_index) {
+    uint64_t entry = 0;
+
+    ifstream datafile;
+    datafile.open("../data/processedCM/"+to_string(trans_num)+".txt");
+    if (entry_index) gotoLine(datafile, entry_index);
+    datafile >> entry;
+    datafile.close();
+
+    return entry;
+}
+
+
+void prepareRotatedVectorOfA(const PVWParam& param) {
+    int tempn, tempId;
+    for (tempn = 1; tempn < param.n; tempn *= 2) {}
+    for (tempId = 1; tempId < id_size_glb * party_size_glb; tempId *= 2) {}
+
+    int iteration = ceil(tempId / batch_ntt_glb);
+
+    for (int it = 0; it < iteration; it++) {
+        for (int i = 0; i < tempn; i++) {
+            for (int eid_index = it*batch_ntt_glb; eid_index < (it+1)*batch_ntt_glb; eid_index++) {
+                vector<uint64_t> vectorOfA(poly_modulus_degree_glb);
+                for (int j = 0; j < poly_modulus_degree_glb; j++) {
+                    int row_index = (j + i) % tempn;
+                    int col_index = (j + eid_index) % (tempId);
+                    if (row_index >= param.n || col_index >= id_size_glb * party_size_glb) {
+                        vectorOfA[j] = 0;
+                    } else {
+                        vectorOfA[j] = loadEntryFromProcessedCM(j, row_index * (id_size_glb*party_size_glb) + col_index);
+                    }
+                }
+
+                int eid_index_clear = eid_index % batch_ntt_glb;
+                writeVectorToFile(vectorOfA, it*tempn*batch_ntt_glb + i*batch_ntt_glb + eid_index_clear, "vectorOfA");
+            }
+        }
+    }
+}
+
+
+void prepareRotatedVectorOfB(const PVWParam& param) {
+    int tempn;
+    for (tempn = 1; tempn < id_size_glb * party_size_glb; tempn *= 2) {}
+
+    for (int i = 0; i < tempn; i++) {
+        for (int e = 0; e < param.ell; e++) {
+            vector<uint64_t> vectorOfB(poly_modulus_degree_glb);
+            for (int j = 0; j < poly_modulus_degree_glb; j++) {
+                int the_index = (i + j) % tempn;
+                if (the_index >= id_size_glb * party_size_glb) {
+                    vectorOfB[j] = 0;
+                } else {
+                    vectorOfB[j] = loadEntryFromProcessedCM(j, (param.n + e) * (id_size_glb * party_size_glb) + the_index);
+                }
+            }
+
+            writeVectorToFile(vectorOfB, i*param.ell + e, "vectorOfB");
+        }
+    }
+}
+
+
 /**
  * @brief For ObliviousMultiplexer, the clue includes ((param.n + param.ell) * party_size_glb + prng_seed_count) elements.
  * Different from loadData, this function load the cluePoly.txt into two separate data structures, one is the normal cluPoly CM of size (clue_length) x (party_size),
@@ -161,22 +245,25 @@ void loadClues(vector<PVWCiphertext>& clues, const int& start, const int& end, c
  * The resulted matrix CM*R^T, of size (clue_length) x (party_size * id_size).
  * Different from loadObliviousMultiplexerClues, this one does not multiply the result with target Id, since the later one is encrypted.
  * 
- * @param cluePoly 
+ * This function will save the processed matrix back to the file system
+ * 
  * @param randomness 
  * @param start 
  * @param end 
  * @param payloadSize = clueLength * T', where T' = party_size + extra_secure_length
  */
-void loadOMClueWithRandomness(const PVWParam& params, vector<vector<uint64_t>>& cluePoly, const int& start, const int& end, int payloadSize = 306, int clueLength = 454) {
+void loadOMClueWithRandomness(const PVWParam& params, vector<vector<uint64_t>>& cluePoly, const int& start, const int& end,
+                              int payloadSize = 306, int clueLength = 454) {
     vector<uint64_t> temp(payloadSize - prng_seed_uint64_count);
     vector<uint64_t> randomness(prng_seed_uint64_count);
     cluePoly.resize(end-start);
+    vector<uint64_t> processed_cm(454 * id_size_glb * party_size_glb);
 
     int prng_seed_uint64_counter;
     prng_seed_type seed;
 
     for(int i = start; i < end; i++){
-        cluePoly[i].resize(454 * id_size_glb * party_size_glb);
+        cluePoly[i-start].resize(454 * id_size_glb * party_size_glb);
         ifstream datafile;
 
         datafile.open("../data/cluePoly/"+to_string(i)+".txt");
@@ -199,7 +286,7 @@ void loadOMClueWithRandomness(const PVWParam& params, vector<vector<uint64_t>>& 
         vector<vector<uint64_t>> random = generateRandomMatrixWithSeed(params, seed, id_size_glb * party_size_glb,
                                                                        party_size_glb + secure_extra_length_glb);
 
-        for (int c = 0; c < cluePoly[i].size(); c++) {
+        for (int c = 0; c < processed_cm.size(); c++) {
             int row_index = c / (id_size_glb * party_size_glb);
             int col_index = c % (id_size_glb * party_size_glb);
             long tempClue = 0;
@@ -207,9 +294,31 @@ void loadOMClueWithRandomness(const PVWParam& params, vector<vector<uint64_t>>& 
                 tempClue = (tempClue + temp[row_index * (party_size_glb + secure_extra_length_glb) + k] * random[col_index][k]) % params.q;
                 tempClue = tempClue < 0 ? tempClue + params.q : tempClue;
             }
-            cluePoly[i][c] = tempClue;
+            cluePoly[i-start][c] = tempClue;
+            processed_cm[c] = tempClue;
         }
+
+        writeVectorToFile(processed_cm, i, "processedCM");
     }
+}
+
+
+vector<vector<uint64_t>> batchLoadOMClueWithRandomness(const PVWParam& params, const int& start, const int& end, int payloadSize) {
+    vector<vector<uint64_t>> processed_cm(end-start);
+
+    for(int i = start; i < end; i++){
+        processed_cm[i-start].resize(454 * id_size_glb * party_size_glb);
+        ifstream datafile;
+
+        datafile.open("../data/processedCM/"+to_string(i)+".txt");
+        datafile.seekg(0, ios::beg);
+        for(int c = 0; c < processed_cm[i-start].size(); c++){
+            datafile >> processed_cm[i-start][c];
+        }
+        datafile.close();
+    }
+
+    return processed_cm;
 }
 
 
